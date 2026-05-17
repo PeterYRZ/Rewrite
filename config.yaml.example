@@ -1,0 +1,35 @@
+# 配置文件模板 — 复制为 config.yaml 后修改
+# cp config.yaml.example config.yaml
+#
+# API Key 通过环境变量注入，不在配置文件中明文存储：
+#   export OPENAI_API_KEY="sk-..."
+#   export ANTHROPIC_API_KEY="sk-ant-..."
+#
+# 本地模型（Ollama）无需 API Key，确保 ollama serve 已启动即可。
+
+models:
+  - name: "gpt-4o"
+    provider: "openai"
+    model: "gpt-4o"
+    api_base: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+
+  - name: "claude-sonnet"
+    provider: "openai"
+    model: "claude-sonnet-4-6"
+    api_base: "https://api.anthropic.com/v1"
+    api_key_env: "ANTHROPIC_API_KEY"
+
+  - name: "local-llama"
+    provider: "ollama"
+    model: "llama3.2"
+    api_base: "http://localhost:11434/v1"
+
+rewrite:
+  candidates_count: 3
+  temperature: 0.7
+  max_tokens: 2000
+
+validation:
+  enabled: true
+  strictness: "medium"
