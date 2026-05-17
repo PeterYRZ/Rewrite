@@ -294,5 +294,88 @@ def main() -> None:
     asyncio.run(main_async())
 
 
+# ---- Eval command ----
+
+def parse_eval_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="评估流水线：批量运行测试用例并生成报告",
+    )
+    parser.add_argument(
+        "test_dir",
+        type=str,
+        nargs="?",
+        default="data/test-cases",
+        help="测试用例目录路径",
+    )
+    parser.add_argument(
+        "--model", "-m",
+        type=str,
+        default=None,
+        help="使用的模型名称",
+    )
+    parser.add_argument(
+        "--config", "-c",
+        type=str,
+        default="config.yaml",
+        help="配置文件路径",
+    )
+    parser.add_argument(
+        "--output", "-o",
+        type=str,
+        default=None,
+        help="导出 JSON 报告路径",
+    )
+    return parser.parse_args()
+
+
+async def main_eval_async() -> None:
+    args = parse_eval_args()
+
+    config_path = Path(args.config)
+    if not config_path.exists():
+        print(f"Error: Config file not found: {args.config}")
+        sys.exit(1)
+    config: AppConfig = load_config(config_path)
+
+    model_name = args.model or config.default_model.name
+    model_config = config.get_model(model_name)
+    print(f"模型: {model_name} ({model_config.model})")
+    print(f"测试目录: {args.test_dir}")
+    print()
+
+    from rewrite_engine.pipelines.evaluate import (
+        BatchEvaluator,
+        load_test_cases,
+    )
+
+    test_cases = load_test_cases(args.test_dir)
+    if not test_cases:
+        print(f"Error: No test cases found in {args.test_dir}")
+        sys.exit(1)
+
+    print(f"共 {len(test_cases)} 个测试用例\n")
+
+    provider = await create_provider(model_config)
+    evaluator = BatchEvaluator(provider, config)
+
+    for i, tc in enumerate(test_cases, 1):
+        print(f"[{i}/{len(test_cases)}] {tc.name}...")
+        report = await evaluator.evaluate(tc)
+        report.print_report()
+
+    evaluator.print_summary()
+
+    if args.output:
+        evaluator.export_json(args.output)
+        print(f"\nJSON 报告已导出至: {args.output}")
+
+    await provider._client.close()  # type: ignore[union-attr]
+
+
+def main_eval() -> None:
+    asyncio.run(main_eval_async())
+
+
 if __name__ == "__main__":
     main()
+

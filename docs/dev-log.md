@@ -210,3 +210,47 @@ printf "1\n1\n" | rewrite data/sample-article.txt --paragraphs 2 4 --mode intera
 ### 下一步
 
 Phase 5：评估脚本 + 测试用例
+
+---
+
+## 2026-05-17 — Phase 5 完成
+
+### 完成内容
+
+**评估框架** (`src/rewrite_engine/pipelines/evaluate.py`)
+- `BatchEvaluator`：批量评估器，对多个测试用例自动运行改写+校验+分析
+  - `evaluate(test_case)`：完整评估单个用例（改写→校验→语义分析）
+  - `print_summary()`：批量汇总（通过/失败 + 平均评分）
+  - `export_json(path)`：导出结构化 JSON 报告
+- `EvaluationReport`：单个用例评估报告（评分、耗时、错误）
+- `TestCase`：测试用例数据类（名称、描述、文章、目标段落、预期行为）
+- `load_test_cases(directory)`：从 JSON 文件批量加载测试用例
+
+**测试用例** (`data/test-cases/`)
+- `01-ai-article.json`：6段 AI 科普文章，中段改写（医疗AI + 未来展望）
+- `02-climate-short.json`：4段短文章，首尾段改写（测试边界）
+- `03-tech-history.json`：5段科技史文章，相邻段落改写（测试衔接）
+
+**CLI 评估命令**
+- `rewrite-eval` 入口：`rewrite-eval data/test-cases -m deepseek-v4-pro`
+- 支持 `--output/-o` 导出 JSON 报告
+
+### 验证结果
+
+```
+rewrite-eval data/test-cases -m deepseek-v4-pro
+```
+
+| 测试用例 | 评分 | 耗时 | 亮点 |
+|---------|------|------|------|
+| AI 科普文章 | 3.8/5 | 104s | Validator空响应降级，语义分析准确 |
+| 短文章首尾段 | 4.8/5 | 57s | 首尾边界改写成功，检测到轻微风格差异 |
+| 相邻段落改写 | 5.0/5 | 88s | 相邻段改写衔接完美 |
+
+**平均评分: 4.5/5**
+
+语义分析对各段落变化的描述精准、具体，差异化改写的质量得到了定量验证。
+
+### 下一步
+
+Phase 6：React 前端（段落编辑器 + 交互式 UI）

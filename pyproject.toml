@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 rewrite = "rewrite_engine.cli.main:main"
+rewrite-eval = "rewrite_engine.cli.main:main_eval"
 
 [build-system]
 requires = ["hatchling"]
