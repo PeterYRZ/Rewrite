@@ -48,6 +48,53 @@ async def rewrite_with_context(
     return rewritten.strip()
 
 
+CANDIDATES_SYSTEM_PROMPT = """\
+你是一个专业写作助手。你的任务是在保持全文逻辑连贯性的前提下，为指定的段落生成多个不同风格的改写候选。
+
+要求：
+1. 仅改写 [TO_REWRITE] 标记的目标段落，不改动其他段落
+2. 每个候选都需保持与前后段落的自然衔接和逻辑连贯
+3. 保留原文的核心信息和主旨，但使用不同的表达方式和措辞
+4. 不同候选之间应在句式结构、用词选择、语气侧重上有明显差异
+5. 每个候选用 "---CANDIDATE---" 分隔，直接输出改写内容，不要编号或解释"""
+
+
+def build_candidates_messages(state: ProjectState, count: int) -> list[Message]:
+    context = state.build_context()
+    para_num = (state.current_paragraph_index or 0) + 1
+
+    user_message = (
+        "以下是需要处理的文章。\n\n"
+        f"{context}\n\n"
+        f"请为 [TO_REWRITE] 标记的段落（段落{para_num}）生成 {count} 个不同风格的改写候选。"
+        "每个候选用 ---CANDIDATE--- 分隔。"
+        "确保候选之间在措辞、句式、侧重点上有明显差异。"
+        "直接输出改写内容，不要添加编号或解释。"
+    )
+
+    return [
+        {"role": "system", "content": CANDIDATES_SYSTEM_PROMPT},
+        {"role": "user", "content": user_message},
+    ]
+
+
+async def generate_candidates(
+    provider: LLMProvider,
+    state: ProjectState,
+    count: int = 3,
+    *,
+    temperature: float = 0.8,
+    max_tokens: int = 3000,
+) -> list[str]:
+    """Generate multiple rewrite candidates for the current paragraph."""
+    messages = build_candidates_messages(state, count)
+    response = await provider.chat(
+        messages, temperature=temperature, max_tokens=max_tokens
+    )
+    candidates = [c.strip() for c in response.split("---CANDIDATE---") if c.strip()]
+    return candidates[:count]
+
+
 # ---- Phase 1 single-paragraph helpers (kept for backward compatibility) ----
 
 
