@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any, AsyncIterator
 
 from openai import AsyncOpenAI
@@ -13,8 +12,9 @@ class OpenAIProvider:
     """LLM provider for OpenAI-compatible APIs (OpenAI, Anthropic via OpenAI SDK, etc.)."""
 
     def __init__(self, config: ModelConfig) -> None:
-        api_key = os.environ.get(config.api_key_env, "sk-placeholder")
-        self._client = AsyncOpenAI(base_url=config.api_base, api_key=api_key)
+        self._client = AsyncOpenAI(
+            base_url=config.api_base, api_key=config.resolve_api_key()
+        )
         self._model = config.model
 
     async def chat(

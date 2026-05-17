@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,14 @@ class ModelConfig(BaseModel):
     provider: str  # "openai" | "ollama"
     model: str
     api_base: str = "https://api.openai.com/v1"
-    api_key_env: str = "OPENAI_API_KEY"
+    api_key: str = "OPENAI_API_KEY"
+
+    def resolve_api_key(self) -> str:
+        """Resolve the API key. If starts with '$', treat as env var name; else use directly."""
+        if self.api_key.startswith("$"):
+            env_var = self.api_key[1:]
+            return os.environ.get(env_var, "")
+        return self.api_key
 
 
 class RewriteConfig(BaseModel):
