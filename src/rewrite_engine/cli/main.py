@@ -377,5 +377,9 @@ def main_eval() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "eval":
+        sys.argv.pop(1)
+        main_eval()
+    else:
+        main()
 

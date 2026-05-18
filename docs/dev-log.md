@@ -254,3 +254,70 @@ rewrite-eval data/test-cases -m deepseek-v4-pro
 ### 下一步
 
 Phase 6：React 前端（段落编辑器 + 交互式 UI）
+
+---
+
+## 2026-05-18 — Phase 6 完成
+
+### 完成内容
+
+**前端项目搭建**
+- React 19 + Vite 8 + Tailwind CSS 4 + TypeScript 6
+- Vite 代理 `/api` → `http://localhost:8000`
+
+**组件** (`web/src/components/`)
+- `ParagraphCard.tsx`：段落卡片，支持 4 种状态颜色标识（原文/已确认/待改写/目标）
+- `ArticleView.tsx`：文章视图，点击段落标记为改写目标
+- `CandidatePicker.tsx`：候选选择器，展示多个候选 + 重新生成/保留原文操作
+- `ModeSelector.tsx`：模式切换（全自动 / 交互式）
+
+**状态管理** (`web/src/hooks/useRewriteSession.ts`)
+- 完整管理改写会话生命周期：加载文章 → 标记目标 → 改写 → 候选选择 → 结果展示
+- 支持 Mode 1（auto）和 Mode 2（interactive）所有 API 调用
+- SSE-ready 架构（后续可扩展流式响应）
+
+**FastAPI 后端** (`src/rewrite_engine/api/server.py`)
+- `POST /api/rewrite/auto` — Mode 1 全自动改写
+- `POST /api/rewrite/interactive/start` — Mode 2 会话创建
+- `POST /api/rewrite/interactive/{id}/candidates` — 生成候选
+- `POST /api/rewrite/interactive/{id}/select` — 选择候选
+- `GET /api/health` — 健康检查
+- 内存会话管理 + CORS 全开放
+
+### 验证结果
+
+- TypeScript 类型检查通过、Vite 构建成功（204KB JS + 18KB CSS）
+- 后端 API 端到端测试通过（含校验 + 语义分析）
+- Vite 代理 `/api` → 后端正常工作
+- 前后端同时运行：`http://localhost:5173`
+
+### 启动方式
+
+```bash
+# 后端
+DEEPSEEK_API_KEY="sk-..." uv run uvicorn rewrite_engine.api.server:app --port 8000
+
+# 前端
+cd web && npm run dev
+```
+
+### 项目总结
+
+**6 个 Phase 全部完成**，覆盖完整开发周期：
+
+| Phase | 内容 | 状态 |
+|-------|------|------|
+| Phase 1 | 数据模型 + LLM Provider + 单段改写 | ✅ |
+| Phase 2 | 调度Agent 状态机 + Mode 1 全自动流水线 | ✅ |
+| Phase 3 | 校验Agent + 语义分析Agent | ✅ |
+| Phase 4 | 交互式流水线 + CLI 候选选择 | ✅ |
+| Phase 5 | 评估脚本 + 测试用例（3 例 / 均分 4.5/5） | ✅ |
+| Phase 6 | React 前端（段落编辑器 + Web UI） | ✅ |
+
+**核心架构**：4 Agent 协作（调度/生成/校验/语义分析），双文档上下文策略，支持云端/本地模型切换。
+
+**三种使用方式**：
+1. CLI 全自动：`rewrite article.txt --paragraphs 2 4`
+2. CLI 交互式：`rewrite article.txt --paragraphs 2 4 --mode interactive`
+3. Web UI：`http://localhost:5173`（含段落编辑器 + 候选选择界面）
+4. 批量评估：`rewrite-eval data/test-cases`
