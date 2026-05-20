@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from '../i18n/I18nContext';
 import type { AppConfigResponse } from '../types';
 
 interface NewModelForm {
@@ -38,6 +39,7 @@ export default function ModelConfigDrawer({
   onAddModel,
   onDeleteModel,
 }: Props) {
+  const { t } = useTranslation();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newModel, setNewModel] = useState<NewModelForm>(emptyForm);
   const [addError, setAddError] = useState('');
@@ -77,7 +79,7 @@ export default function ModelConfigDrawer({
       >
         <div className="p-5 space-y-5">
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-800">模型配置</h3>
+            <h3 className="text-base font-bold text-slate-800">{t('config.title')}</h3>
             <button
               onClick={onClose}
               className="text-slate-400 hover:text-slate-600 text-lg cursor-pointer"
@@ -88,7 +90,7 @@ export default function ModelConfigDrawer({
 
           {/* Model list */}
           <section>
-            <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">当前模型</h4>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">{t('config.currentModel')}</h4>
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {config.models.map((m) => (
                 <label
@@ -115,7 +117,7 @@ export default function ModelConfigDrawer({
                   <button
                     onClick={(e) => { e.preventDefault(); onDeleteModel(m.name); }}
                     className="text-red-400 hover:text-red-600 text-xs cursor-pointer"
-                    title="删除模型"
+                    title={t('config.deleteModel')}
                   >
                     ✕
                   </button>
@@ -126,7 +128,7 @@ export default function ModelConfigDrawer({
               onClick={() => setShowAddForm(!showAddForm)}
               className="mt-2 text-xs text-blue-500 hover:text-blue-700 cursor-pointer"
             >
-              {showAddForm ? '取消' : '+ 新增模型'}
+              {showAddForm ? t('common.cancel') : t('config.addModel')}
             </button>
           </section>
 
@@ -149,14 +151,14 @@ export default function ModelConfigDrawer({
                 value={newModel.api_key} onChange={e => setNewModel({...newModel, api_key: e.target.value})} />
               <button onClick={handleAdd} disabled={loading}
                 className="w-full py-1.5 bg-slate-800 text-white rounded text-xs hover:bg-slate-700 disabled:opacity-40 cursor-pointer">
-                添加
+                {t('config.add')}
               </button>
             </section>
           )}
 
           {/* Parameters */}
           <section>
-            <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">生成参数</h4>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">{t('config.generationParams')}</h4>
             <div className="space-y-3">
               <label className="block">
                 <span className="text-xs text-slate-500">Temperature: {config.rewrite.temperature}</span>
@@ -178,15 +180,15 @@ export default function ModelConfigDrawer({
           {/* Validation */}
           {config.validation && (
             <section>
-              <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">校验设置</h4>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">{t('config.validationSettings')}</h4>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-1 text-xs text-slate-600">
                   <input type="checkbox" checked={config.validation.enabled} readOnly
                     className="w-3 h-3" />
-                  启用
+                  {t('config.enabled')}
                 </label>
                 <span className="text-xs text-slate-400">
-                  严格度: {config.validation.strictness}
+                  {t('config.strictness', { level: config.validation.strictness })}
                 </span>
               </div>
             </section>

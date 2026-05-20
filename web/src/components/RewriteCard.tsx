@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from '../i18n/I18nContext';
 import type { ParagraphVersion, RewriteCardState } from '../types';
 import VersionTimeline from './VersionTimeline';
 
@@ -45,6 +46,7 @@ export default function RewriteCard({
   onVersionRestore,
   onUpdateVersionLabel,
 }: Props) {
+  const { t } = useTranslation();
   const [editText, setEditText] = useState(streamedContent);
 
   const isStreaming = cardState === 'streaming' || cardState === 'regenerating';
@@ -52,7 +54,8 @@ export default function RewriteCard({
   const isAccepted = cardState === 'accepted';
   const isEditing = cardState === 'editing';
   const isGuidance = cardState === 'guidance_input';
-  const hasError = streamedContent.startsWith('[错误]');
+  const errorLabel = t('rewrite.errorLabel');
+  const hasError = streamedContent.startsWith(errorLabel);
 
   return (
     <div
@@ -66,11 +69,11 @@ export default function RewriteCard({
     >
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-medium text-slate-400">
-          段落 {paragraphIndex + 1}
+          {t('common.paragraph', { n: paragraphIndex + 1 })}
         </span>
         <span className="text-xs text-slate-400 font-mono">
-          原文 {originalContent.length} 字
-          {streamedContent && ` → ${streamedContent.length} 字`}
+          {t('rewrite.originalChars', { n: originalContent.length })}
+          {streamedContent && ` ${t('rewrite.rewrittenChars', { n: streamedContent.length })}`}
         </span>
       </div>
 
@@ -85,7 +88,7 @@ export default function RewriteCard({
         <div className="mb-3">
           <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
             {streamedContent || (
-              <span className="text-slate-300 italic">等待生成...</span>
+              <span className="text-slate-300 italic">{t('rewrite.waiting')}</span>
             )}
             {isStreaming && (
               <span className="inline-block w-2 h-4 bg-amber-400 animate-pulse ml-0.5 align-middle" />
@@ -108,7 +111,7 @@ export default function RewriteCard({
               onClick={onStop}
               className="mt-2 px-2 py-0.5 text-xs rounded border border-red-300 text-red-500 hover:bg-red-50 cursor-pointer"
             >
-              停止
+              {t('common.stop')}
             </button>
           )}
         </div>
@@ -121,7 +124,7 @@ export default function RewriteCard({
             type="text"
             value={guidance}
             onChange={(e) => onGuidanceChange(e.target.value)}
-            placeholder="输入改写指导，如：语气更正式一些..."
+            placeholder={t('rewrite.guidancePlaceholder')}
             className="w-full p-2 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-400 outline-none"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && guidance.trim()) {
@@ -133,12 +136,12 @@ export default function RewriteCard({
             }}
           />
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-xs text-slate-400">按 Enter 提交 · Esc 取消</p>
+            <p className="text-xs text-slate-400">{t('rewrite.guidanceHint')}</p>
             <button
               onClick={onCancelGuidance}
               className="px-2 py-0.5 text-xs rounded border border-slate-300 text-slate-500 hover:bg-slate-100 cursor-pointer"
             >
-              取消
+              {t('common.cancel')}
             </button>
           </div>
         </div>
@@ -155,7 +158,7 @@ export default function RewriteCard({
                   onClick={onRegenerate}
                   className="px-3 py-1 text-xs rounded bg-amber-500 text-white hover:bg-amber-600 cursor-pointer"
                 >
-                  重试
+                  {t('common.retry')}
                 </button>
               </>
             ) : (
@@ -164,19 +167,19 @@ export default function RewriteCard({
                   onClick={onAccept}
                   className="px-3 py-1 text-xs rounded bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer"
                 >
-                  接受
+                  {t('common.accept')}
                 </button>
                 <button
                   onClick={onRegenerate}
                   className="px-3 py-1 text-xs rounded border border-amber-300 text-amber-600 hover:bg-amber-50 cursor-pointer"
                 >
-                  重新生成
+                  {t('rewrite.regenerate')}
                 </button>
                 <button
                   onClick={onStartGuidance}
                   className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer"
                 >
-                  指导重写
+                  {t('rewrite.guidedRewrite')}
                 </button>
                 <button
                   onClick={() => {
@@ -185,7 +188,7 @@ export default function RewriteCard({
                   }}
                   className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer"
                 >
-                  手动编辑
+                  {t('rewrite.manualEdit')}
                 </button>
               </>
             )}
@@ -198,20 +201,20 @@ export default function RewriteCard({
               onClick={() => onConfirmEdit(editText)}
               className="px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600 cursor-pointer"
             >
-              确认编辑
+              {t('rewrite.confirmEdit')}
             </button>
             <button
               onClick={onAccept}
               className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer"
             >
-              取消
+              {t('common.cancel')}
             </button>
           </>
         )}
 
         {isAccepted && (
           <span className="text-xs text-emerald-600 font-medium">
-            已确认 ✓
+            {t('rewrite.confirmed')}
           </span>
         )}
       </div>
@@ -232,13 +235,13 @@ export default function RewriteCard({
       {previewVersion && (
         <div className="mt-2 p-2 rounded bg-blue-50 border border-blue-200 text-xs flex items-center justify-between">
           <span className="text-blue-600">
-            正在预览: {previewVersion.label} (Round {previewVersion.roundNumber})
+            {t('rewrite.previewing', { label: previewVersion.label, n: previewVersion.roundNumber })}
           </span>
           <button
             onClick={() => onVersionPreview?.(null)}
             className="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-600 hover:bg-blue-200 cursor-pointer"
           >
-            退出预览
+            {t('rewrite.exitPreview')}
           </button>
         </div>
       )}

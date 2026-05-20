@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from '../i18n/I18nContext';
 
 interface Props {
   text: string;
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function ResultToolbar({ text, className = '' }: Props) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -44,13 +46,13 @@ export default function ResultToolbar({ text, className = '' }: Props) {
         onClick={handleCopy}
         className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-1"
       >
-        {copied ? '✓ 已复制' : '📋 复制全文'}
+        {copied ? t('result.copied') : t('result.copy')}
       </button>
       <button
         onClick={handleDownload}
         className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-1"
       >
-        📥 下载 .txt
+        {t('result.download')}
       </button>
     </div>
   );

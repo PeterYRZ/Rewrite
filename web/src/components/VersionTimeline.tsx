@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from '../i18n/I18nContext';
 import type { ParagraphVersion } from '../types';
 
 interface Props {
@@ -18,9 +19,12 @@ export default function VersionTimeline({
   onRestore,
   onUpdateLabel,
 }: Props) {
+  const { t, lang } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [labelText, setLabelText] = useState('');
+
+  const dateLocale = lang === 'en' ? 'en-US' : 'zh-CN';
 
   if (versions.length === 0) return null;
 
@@ -31,7 +35,7 @@ export default function VersionTimeline({
         className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
       >
         <span className={`transition-transform ${expanded ? 'rotate-90' : ''}`}>▸</span>
-        历史版本 ({versions.length})
+        {t('version.historyVersions', { n: versions.length })}
       </button>
 
       {expanded && (
@@ -39,9 +43,9 @@ export default function VersionTimeline({
           {/* Current version */}
           <div className="p-2 rounded bg-emerald-50 border border-emerald-200 text-xs">
             <div className="flex items-center justify-between">
-              <span className="font-medium text-emerald-700">当前版本</span>
+              <span className="font-medium text-emerald-700">{t('version.currentVersion')}</span>
               <span className="text-emerald-500">
-                {currentContent.length} 字
+                {t('version.chars', { n: currentContent.length })}
               </span>
             </div>
             <p className="text-emerald-600 mt-0.5 line-clamp-2">
@@ -88,19 +92,19 @@ export default function VersionTimeline({
                           setEditingLabelId(v.versionId);
                           setLabelText(v.label);
                         }}
-                        title="点击编辑标签"
+                        title={t('version.clickToEdit')}
                       >
                         {v.label}
                       </span>
                     )}
                     <span className="text-slate-400">
-                      {new Date(v.createdAt).toLocaleString('zh-CN')}
+                      {new Date(v.createdAt).toLocaleString(dateLocale)}
                     </span>
                     {isPreviewing && (
-                      <span className="text-blue-500 font-medium">正在预览</span>
+                      <span className="text-blue-500 font-medium">{t('version.previewing')}</span>
                     )}
                   </div>
-                  <span className="text-slate-400">{v.content.length} 字</span>
+                  <span className="text-slate-400">{t('version.chars', { n: v.content.length })}</span>
                 </div>
                 <p className="text-slate-500 mt-0.5 line-clamp-2">
                   {v.content.slice(0, 100)}...
@@ -111,21 +115,21 @@ export default function VersionTimeline({
                       onClick={() => onPreview(null)}
                       className="px-2 py-0.5 text-xs rounded border border-blue-300 text-blue-600 bg-blue-100 hover:bg-blue-200 cursor-pointer"
                     >
-                      退出预览
+                      {t('version.exitPreview')}
                     </button>
                   ) : (
                     <button
                       onClick={() => onPreview(v)}
                       className="px-2 py-0.5 text-xs rounded border border-blue-200 text-blue-500 hover:bg-blue-50 cursor-pointer"
                     >
-                      预览
+                      {t('version.preview')}
                     </button>
                   )}
                   <button
                     onClick={() => onRestore(v)}
                     className="px-2 py-0.5 text-xs rounded border border-amber-200 text-amber-600 hover:bg-amber-50 cursor-pointer"
                   >
-                    恢复到此版本
+                    {t('version.restore')}
                   </button>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from '../i18n/I18nContext';
 import type { HistoryEntry } from '../hooks/useHistory';
 
 interface Props {
@@ -18,8 +19,11 @@ export default function HistoryPage({
   onClose,
   compact = false,
 }: Props) {
+  const { t, lang } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+
+  const dateLocale = lang === 'en' ? 'en-US' : 'zh-CN';
 
   const startRename = (entry: HistoryEntry) => {
     setEditingId(entry.id);
@@ -39,10 +43,10 @@ export default function HistoryPage({
     <div className={containerClass}>
       {!compact && (
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-700">历史记录</h2>
+          <h2 className="text-lg font-semibold text-slate-700">{t('history.title')}</h2>
           {onClose && (
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-              ✕ 关闭
+              {t('history.close')}
             </button>
           )}
         </div>
@@ -50,7 +54,7 @@ export default function HistoryPage({
 
       {entries.length === 0 ? (
         <p className="text-slate-400 text-sm py-6 text-center">
-          暂无历史记录。完成一次改写后会自动保存。
+          {t('history.empty')}
         </p>
       ) : (
         <div className={compact ? 'space-y-2' : 'grid gap-3'}>
@@ -83,8 +87,8 @@ export default function HistoryPage({
                     </h3>
                   )}
                   <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-400 min-w-0">
-                    <span className="flex-shrink-0">{entry.roundCount} 轮</span>
-                    <span className="flex-shrink-0">{new Date(entry.updatedAt).toLocaleString('zh-CN')}</span>
+                    <span className="flex-shrink-0">{t('history.rounds', { n: entry.roundCount })}</span>
+                    <span className="flex-shrink-0">{new Date(entry.updatedAt).toLocaleString(dateLocale)}</span>
                     <span className="truncate min-w-0">
                       {entry.articleText.slice(0, 60).replace(/\n/g, ' ')}...
                     </span>
@@ -94,7 +98,7 @@ export default function HistoryPage({
                   <button
                     onClick={() => startRename(entry)}
                     className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    title="重命名"
+                    title={t('history.rename')}
                   >
                     ✎
                   </button>
@@ -102,7 +106,7 @@ export default function HistoryPage({
                     onClick={() => onContinue(entry)}
                     className="px-3 py-1 text-xs rounded bg-slate-800 text-white hover:bg-slate-700 cursor-pointer"
                   >
-                    继续
+                    {t('history.continue')}
                   </button>
                   <button
                     onClick={() => onDelete(entry.id)}

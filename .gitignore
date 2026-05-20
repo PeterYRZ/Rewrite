@@ -22,3 +22,7 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# logs
+logs/
+logs/rewrite-engine.log

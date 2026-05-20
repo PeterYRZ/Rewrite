@@ -1,0 +1,126 @@
+{
+  "common": {
+    "accept": "接受",
+    "cancel": "取消",
+    "stop": "停止",
+    "retry": "重试",
+    "regenerate": "重新生成",
+    "close": "关闭",
+    "edit": "编辑",
+    "delete": "删除",
+    "confirm": "确认",
+    "preview": "预览",
+    "save": "保存",
+    "chars": "字",
+    "paragraph": "段落 {{n}}"
+  },
+  "header": {
+    "title": "全文段落改写",
+    "admin": "管理用户",
+    "logout": "登出",
+    "history": "历史记录",
+    "historyBtn": "📋 历史",
+    "modelConfig": "模型配置"
+  },
+  "home": {
+    "inputTitle": "输入文章",
+    "placeholder": "在此粘贴文章，段落之间用空行分隔...",
+    "loadArticle": "加载文章",
+    "recentHistory": "最近改写",
+    "configError": "配置加载失败: {{error}}"
+  },
+  "article": {
+    "doneTitle": "当前稿 — 第 {{n}} 轮完成",
+    "selectableTitle": "当前稿（点击段落选择改写目标）",
+    "roundComplete": "第 {{n}} 轮已完成",
+    "rewrittenParagraphs": "已改写段落：{{list}}"
+  },
+  "rewrite": {
+    "resultTitle": "改写结果 — Round {{n}}",
+    "finalResult": "最终结果",
+    "waitingPlaceholder": "选择左侧段落，点击下方按钮开始改写",
+    "rewriteSelected": "重写选中段落 ({{n}})",
+    "streamingProgress": "正在改写... ({{done}}/{{total}} 段完成)",
+    "cancelAll": "取消全部",
+    "commitRound": "提交本轮 → 继续下一轮",
+    "nextRound": "开始下一轮",
+    "reset": "重新开始",
+    "goHome": "返回首页",
+    "selected": "已选: {{list}}",
+    "waiting": "等待生成...",
+    "originalChars": "原文 {{n}} 字",
+    "rewrittenChars": "→ {{n}} 字",
+    "regenerate": "重新生成",
+    "guidedRewrite": "指导重写",
+    "manualEdit": "手动编辑",
+    "confirmEdit": "确认编辑",
+    "confirmed": "已确认 ✓",
+    "errorLabel": "[错误]",
+    "guidancePlaceholder": "输入改写指导，如：语气更正式一些...",
+    "guidanceHint": "按 Enter 提交 · Esc 取消",
+    "previewing": "正在预览: {{label}} (Round {{n}})",
+    "exitPreview": "退出预览",
+    "restoreVersion": "恢复到此版本"
+  },
+  "history": {
+    "title": "历史记录",
+    "close": "✕ 关闭",
+    "empty": "暂无历史记录。完成一次改写后会自动保存。",
+    "rounds": "{{n}} 轮",
+    "rename": "重命名",
+    "continue": "继续",
+    "defaultTitle": "未命名文章"
+  },
+  "auth": {
+    "heading": "全文段落改写",
+    "subtitle": "请输入 Access Key 以继续",
+    "login": "登录",
+    "loggingIn": "验证中..."
+  },
+  "admin": {
+    "title": "用户管理",
+    "close": "✕ 关闭",
+    "delete": "删除",
+    "addUser": "添加用户",
+    "addUserHeading": "添加用户",
+    "username": "用户名",
+    "adding": "添加中...",
+    "addUserBtn": "添加用户"
+  },
+  "config": {
+    "title": "模型配置",
+    "currentModel": "当前模型",
+    "deleteModel": "删除模型",
+    "addModel": "+ 新增模型",
+    "add": "添加",
+    "enabled": "启用",
+    "generationParams": "生成参数",
+    "validationSettings": "校验设置",
+    "strictness": "严格度: {{level}}"
+  },
+  "result": {
+    "copied": "✓ 已复制",
+    "copy": "📋 复制全文",
+    "download": "📥 下载 .txt"
+  },
+  "version": {
+    "historyVersions": "历史版本 ({{n}})",
+    "currentVersion": "当前版本",
+    "chars": "{{n}} 字",
+    "clickToEdit": "点击编辑标签",
+    "previewing": "正在预览",
+    "exitPreview": "退出预览",
+    "preview": "预览",
+    "restore": "恢复到此版本"
+  },
+  "debug": {
+    "clear": "清除",
+    "waitingEvents": "等待事件...",
+    "refresh": "🔄 刷新",
+    "noLogs": "无日志"
+  },
+  "round": {
+    "rewriteParagraphs": "改写段落 {{indices}} ({{count}} 段)",
+    "status": "Round {{current}}（已提交 {{committed}} 轮）"
+  }
+}

@@ -33,3 +33,8 @@
 2026-05-20 21:46:04 | INFO  | para_done idx=3 tokens=106
 2026-05-20 21:46:15 | INFO  | para_start idx=0
 2026-05-20 21:46:25 | INFO  | para_done idx=0 tokens=134
+2026-05-20 22:21:36 | INFO  | Server starting
+2026-05-20 22:23:40 | INFO  | para_start idx=0
+2026-05-20 22:23:41 | INFO  | para_start idx=1
+2026-05-20 22:23:49 | INFO  | para_done idx=1 tokens=110
+2026-05-20 22:23:55 | INFO  | para_done idx=0 tokens=108

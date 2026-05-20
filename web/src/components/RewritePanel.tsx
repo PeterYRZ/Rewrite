@@ -1,4 +1,5 @@
 import type { Paragraph, ParagraphVersion, RewriteCardState } from '../types';
+import { useTranslation } from '../i18n/I18nContext';
 import RewriteCard from './RewriteCard';
 
 interface Props {
@@ -46,6 +47,7 @@ export default function RewritePanel({
   onVersionRestore,
   onUpdateVersionLabel,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
@@ -59,7 +61,7 @@ export default function RewritePanel({
               key={p.index}
               className="rounded-lg border border-slate-100 bg-slate-50 p-3"
             >
-              <span className="text-xs text-slate-400">段落 {p.index + 1}</span>
+              <span className="text-xs text-slate-400">{t('common.paragraph', { n: p.index + 1 })}</span>
               <p className="text-sm text-slate-500 mt-1 line-clamp-2">
                 {p.content.slice(0, 100)}
                 {p.content.length > 100 ? '...' : ''}

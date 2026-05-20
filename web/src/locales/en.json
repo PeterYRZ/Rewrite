@@ -1,0 +1,126 @@
+{
+  "common": {
+    "accept": "Accept",
+    "cancel": "Cancel",
+    "stop": "Stop",
+    "retry": "Retry",
+    "regenerate": "Regenerate",
+    "close": "Close",
+    "edit": "Edit",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "preview": "Preview",
+    "save": "Save",
+    "chars": "chars",
+    "paragraph": "Paragraph {{n}}"
+  },
+  "header": {
+    "title": "Paragraph Rewriter",
+    "admin": "Manage Users",
+    "logout": "Logout",
+    "history": "History",
+    "historyBtn": "📋 History",
+    "modelConfig": "Model Config"
+  },
+  "home": {
+    "inputTitle": "Input Article",
+    "placeholder": "Paste your article here. Separate paragraphs with blank lines...",
+    "loadArticle": "Load Article",
+    "recentHistory": "Recent Rewrites",
+    "configError": "Failed to load config: {{error}}"
+  },
+  "article": {
+    "doneTitle": "Current Draft — Round {{n}} Complete",
+    "selectableTitle": "Current Draft (click paragraphs to select rewrite targets)",
+    "roundComplete": "Round {{n}} complete",
+    "rewrittenParagraphs": "Rewritten paragraphs: {{list}}"
+  },
+  "rewrite": {
+    "resultTitle": "Rewrite Results — Round {{n}}",
+    "finalResult": "Final Result",
+    "waitingPlaceholder": "Select paragraphs on the left, then click the button below to start rewriting",
+    "rewriteSelected": "Rewrite Selected ({{n}})",
+    "streamingProgress": "Rewriting... ({{done}}/{{total}} done)",
+    "cancelAll": "Cancel All",
+    "commitRound": "Commit Round → Continue",
+    "nextRound": "Next Round",
+    "reset": "Start Over",
+    "goHome": "Home",
+    "selected": "Selected: {{list}}",
+    "waiting": "Waiting...",
+    "originalChars": "Original {{n}} chars",
+    "rewrittenChars": "→ {{n}} chars",
+    "regenerate": "Regenerate",
+    "guidedRewrite": "Guide Rewrite",
+    "manualEdit": "Edit",
+    "confirmEdit": "Confirm Edit",
+    "confirmed": "Confirmed ✓",
+    "errorLabel": "[Error]",
+    "guidancePlaceholder": "Enter rewrite guidance, e.g.: make the tone more academic...",
+    "guidanceHint": "Enter to submit · Esc to cancel",
+    "previewing": "Previewing: {{label}} (Round {{n}})",
+    "exitPreview": "Exit Preview",
+    "restoreVersion": "Restore to this version"
+  },
+  "history": {
+    "title": "History",
+    "close": "✕ Close",
+    "empty": "No history yet. It will be auto-saved after completing a rewrite.",
+    "rounds": "{{n}} rounds",
+    "rename": "Rename",
+    "continue": "Continue",
+    "defaultTitle": "Untitled"
+  },
+  "auth": {
+    "heading": "Paragraph Rewriter",
+    "subtitle": "Enter your Access Key to continue",
+    "login": "Login",
+    "loggingIn": "Verifying..."
+  },
+  "admin": {
+    "title": "User Management",
+    "close": "✕ Close",
+    "delete": "Delete",
+    "addUser": "Add User",
+    "addUserHeading": "Add User",
+    "username": "Username",
+    "adding": "Adding...",
+    "addUserBtn": "Add User"
+  },
+  "config": {
+    "title": "Model Configuration",
+    "currentModel": "Current Model",
+    "deleteModel": "Delete Model",
+    "addModel": "+ Add Model",
+    "add": "Add",
+    "enabled": "Enabled",
+    "generationParams": "Generation Parameters",
+    "validationSettings": "Validation Settings",
+    "strictness": "Strictness: {{level}}"
+  },
+  "result": {
+    "copied": "✓ Copied",
+    "copy": "📋 Copy",
+    "download": "📥 Download .txt"
+  },
+  "version": {
+    "historyVersions": "History ({{n}})",
+    "currentVersion": "Current Version",
+    "chars": "{{n}} chars",
+    "clickToEdit": "Click to edit label",
+    "previewing": "Previewing",
+    "exitPreview": "Exit Preview",
+    "preview": "Preview",
+    "restore": "Restore"
+  },
+  "debug": {
+    "clear": "Clear",
+    "waitingEvents": "Waiting for events...",
+    "refresh": "🔄 Refresh",
+    "noLogs": "No logs"
+  },
+  "round": {
+    "rewriteParagraphs": "Rewrite paragraphs {{indices}} ({{count}} paragraphs)",
+    "status": "Round {{current}} ({{committed}} committed)"
+  }
+}

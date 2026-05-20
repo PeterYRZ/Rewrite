@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from '../i18n/I18nContext';
 import type { DebugLogEntry } from '../hooks/useDebug';
 
 type TabId = 'session' | 'events' | 'logs';
@@ -39,6 +40,7 @@ export default function DebugPanel({
   onFetchBackendLogs,
   onClearLogs,
 }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabId>('events');
   const eventsEndRef = useRef<HTMLDivElement>(null);
@@ -131,7 +133,7 @@ export default function DebugPanel({
               onClick={onClearLogs}
               className="px-2 py-2 text-xs text-slate-400 hover:text-red-500 cursor-pointer"
             >
-              清除
+              {t('debug.clear')}
             </button>
           )}
         </div>
@@ -152,7 +154,7 @@ export default function DebugPanel({
           {tab === 'events' && (
             <div className="space-y-1 font-mono text-xs">
               {sseLog.length === 0 && (
-                <p className="text-slate-400 italic">等待事件...</p>
+                <p className="text-slate-400 italic">{t('debug.waitingEvents')}</p>
               )}
               {sseLog.map((entry) => {
                 const badge = eventColors[entry.type] || 'bg-gray-100 text-gray-600';
@@ -178,10 +180,10 @@ export default function DebugPanel({
                 onClick={onFetchBackendLogs}
                 className="mb-2 px-2 py-1 text-xs bg-slate-100 rounded hover:bg-slate-200 cursor-pointer"
               >
-                🔄 刷新
+                {t('debug.refresh')}
               </button>
               {backendLogs.length === 0 && (
-                <p className="text-slate-400 italic">无日志</p>
+                <p className="text-slate-400 italic">{t('debug.noLogs')}</p>
               )}
               {backendLogs.map((line, i) => (
                 <div key={i} className="text-slate-600 break-all leading-relaxed">

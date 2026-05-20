@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from '../i18n/I18nContext';
 
 const API_BASE = '/api';
 
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function AdminPanel({ token, onClose }: Props) {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -73,9 +75,9 @@ export default function AdminPanel({ token, onClose }: Props) {
     <div className="fixed inset-0 bg-black/30 z-50 flex items-start justify-center pt-20 overflow-y-auto">
       <div className="w-full max-w-md bg-white rounded-xl border border-slate-200 p-6 shadow-sm mx-4">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-700">用户管理</h2>
+          <h2 className="text-lg font-semibold text-slate-700">{t('admin.title')}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-            ✕ 关闭
+            {t('admin.close')}
           </button>
         </div>
 
@@ -96,7 +98,7 @@ export default function AdminPanel({ token, onClose }: Props) {
                   onClick={() => handleDelete(u.username)}
                   className="text-red-400 hover:text-red-600 text-xs cursor-pointer"
                 >
-                  删除
+                  {t('admin.delete')}
                 </button>
               )}
             </div>
@@ -105,12 +107,12 @@ export default function AdminPanel({ token, onClose }: Props) {
 
         {/* Add user form */}
         <div className="border-t border-slate-100 pt-4">
-          <h3 className="text-sm font-semibold text-slate-600 mb-2">添加用户</h3>
+          <h3 className="text-sm font-semibold text-slate-600 mb-2">{t('admin.addUserHeading')}</h3>
           <div className="space-y-2">
             <input
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
-              placeholder="用户名"
+              placeholder={t('admin.username')}
               className="w-full p-2 border border-slate-200 rounded text-sm outline-none"
             />
             <input
@@ -124,7 +126,7 @@ export default function AdminPanel({ token, onClose }: Props) {
               disabled={loading || !newUsername || !newKey}
               className="w-full py-2 bg-slate-800 text-white rounded text-sm hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
             >
-              {loading ? '添加中...' : '添加用户'}
+              {loading ? t('admin.adding') : t('admin.addUserBtn')}
             </button>
           </div>
         </div>

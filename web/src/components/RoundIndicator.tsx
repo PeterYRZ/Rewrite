@@ -1,4 +1,5 @@
 import type { RewriteRound } from '../types';
+import { useTranslation } from '../i18n/I18nContext';
 
 interface Props {
   currentRound: number;
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function RoundIndicator({ currentRound, rounds, className = '' }: Props) {
+  const { t } = useTranslation();
   if (rounds.length === 0) {
     return (
       <div className={`flex items-center gap-2 text-xs text-slate-400 ${className}`}>
@@ -24,7 +26,10 @@ export default function RoundIndicator({ currentRound, rounds, className = '' }:
         {rounds.map((r) => (
           <span
             key={r.round_num}
-            title={`Round ${r.round_num}: 改写段落 ${r.target_indices.map((i) => i + 1).join(', ')} (${Object.keys(r.results).length} 段)`}
+            title={t('round.rewriteParagraphs', {
+              indices: r.target_indices.map((i) => i + 1).join(', '),
+              count: Object.keys(r.results).length,
+            })}
             className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-xs cursor-default"
           >
             {r.round_num}
@@ -35,7 +40,7 @@ export default function RoundIndicator({ currentRound, rounds, className = '' }:
         </span>
       </div>
       <span className="text-slate-400">
-        Round {currentRound}（已提交 {rounds.length} 轮）
+        {t('round.status', { current: currentRound, committed: rounds.length })}
       </span>
     </div>
   );

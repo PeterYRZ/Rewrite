@@ -17,6 +17,7 @@ import { useVersions } from './hooks/useVersions';
 import type { ParagraphVersion } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useDebug } from './hooks/useDebug';
+import { useTranslation } from './i18n/I18nContext';
 import AuthGate from './components/AuthGate';
 import AdminPanel from './components/AdminPanel';
 import DebugPanel from './components/DebugPanel';
@@ -24,7 +25,9 @@ import DebugPanel from './components/DebugPanel';
 const API_BASE = '/api';
 
 export default function App() {
+  const { t, lang, setLang } = useTranslation();
   const [inputText, setInputText] = useState('');
+  const errorLabel = t('rewrite.errorLabel');
 
   const auth = useAuth();
   const article = useArticleState();
@@ -104,7 +107,7 @@ export default function App() {
           });
         },
         onParagraphError(paraIndex, error) {
-          article.setRewrittenContent(paraIndex, `[错误] ${error}`);
+          article.setRewrittenContent(paraIndex, `${errorLabel} ${error}`);
           article.setCardState(paraIndex, 'stream_done');
           debug.addLogEntry('paragraph_error', { paragraph_index: paraIndex, error });
         },
@@ -175,7 +178,7 @@ export default function App() {
             });
           },
           onParagraphError(_pIdx, error) {
-            article.setRewrittenContent(paraIndex, `[错误] ${error}`);
+            article.setRewrittenContent(paraIndex, `${errorLabel} ${error}`);
             article.setCardState(paraIndex, 'stream_done');
             debug.addLogEntry('paragraph_error', { paragraph_index: paraIndex, error });
           },
@@ -419,7 +422,7 @@ export default function App() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h1 className="text-lg font-bold text-slate-800">全文段落改写</h1>
+            <h1 className="text-lg font-bold text-slate-800">{t('header.title')}</h1>
             {auth.user && (
               <span className="text-xs text-slate-400">
                 {auth.user.username}
@@ -433,14 +436,14 @@ export default function App() {
                 onClick={() => setShowAdmin(true)}
                 className="text-xs text-amber-600 hover:text-amber-800 cursor-pointer font-medium"
               >
-                管理用户
+                {t('header.admin')}
               </button>
             )}
             <button
               onClick={auth.logout}
               className="text-xs text-slate-400 hover:text-red-500 cursor-pointer"
             >
-              登出
+              {t('header.logout')}
             </button>
             {!isIdle && (
               <RoundIndicator currentRound={currentRound} rounds={rounds} />
@@ -460,15 +463,22 @@ export default function App() {
               <button
                 onClick={() => setShowHistory(true)}
                 className="text-slate-400 hover:text-slate-600 text-sm cursor-pointer px-2"
-                title="历史记录"
+                title={t('header.history')}
               >
-                📋 历史
+                {t('header.historyBtn')}
               </button>
             )}
             <button
+              onClick={() => setLang(lang === 'zh-CN' ? 'en' : 'zh-CN')}
+              className="text-slate-400 hover:text-slate-600 text-sm cursor-pointer px-1"
+              title={lang === 'zh-CN' ? 'Switch to English' : '切换到中文'}
+            >
+              🌐
+            </button>
+            <button
               onClick={() => setDrawerOpen(true)}
               className="text-slate-400 hover:text-slate-600 text-lg cursor-pointer px-1"
-              title="模型配置"
+              title={t('header.modelConfig')}
             >
               ⚙
             </button>
@@ -480,11 +490,11 @@ export default function App() {
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6">
         {isIdle && (
           <div className="max-w-2xl mx-auto bg-white rounded-xl border border-slate-200 p-6 space-y-4 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-700">输入文章</h2>
+            <h2 className="text-lg font-semibold text-slate-700">{t('home.inputTitle')}</h2>
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="在此粘贴文章，段落之间用空行分隔..."
+              placeholder={t('home.placeholder')}
               className="w-full h-48 p-4 border border-slate-200 rounded-lg text-sm resize-y focus:ring-2 focus:ring-slate-400 outline-none"
             />
             <button
@@ -492,16 +502,16 @@ export default function App() {
               disabled={!inputText.trim()}
               className="px-6 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
             >
-              加载文章
+              {t('home.loadArticle')}
             </button>
             {configHook.error && (
-              <p className="text-sm text-red-500">配置加载失败: {configHook.error}</p>
+              <p className="text-sm text-red-500">{t('home.configError', { error: configHook.error })}</p>
             )}
 
             {/* Recent history on idle page */}
             {history.entries.length > 0 && (
               <div className="mt-6 pt-6 border-t border-slate-100">
-                <h3 className="text-sm font-semibold text-slate-500 mb-3">最近改写</h3>
+                <h3 className="text-sm font-semibold text-slate-500 mb-3">{t('home.recentHistory')}</h3>
                 <HistoryPage
                   entries={history.entries.slice(0, 5)}
                   onContinue={handleHistoryContinue}
@@ -520,8 +530,8 @@ export default function App() {
               <ArticlePanel
                 title={
                   isDone
-                    ? `当前稿 — 第 ${rounds.length} 轮完成`
-                    : '当前稿（点击段落选择改写目标）'
+                    ? t('article.doneTitle', { n: rounds.length })
+                    : t('article.selectableTitle')
                 }
                 paragraphs={article.paragraphs}
                 targetIndices={
@@ -542,12 +552,14 @@ export default function App() {
                 {isDone && rounds.length > 0 && (
                   <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
                     <p className="text-sm font-medium text-emerald-700">
-                      第 {rounds.length} 轮已完成
+                      {t('article.roundComplete', { n: rounds.length })}
                     </p>
                     <p className="text-xs text-emerald-600 mt-1">
-                      已改写段落：{rounds.flatMap((r) =>
-                        Object.keys(r.results).map((k) => `段落${Number(k) + 1}`),
-                      ).join(', ')}
+                      {t('article.rewrittenParagraphs', {
+                        list: rounds.flatMap((r) =>
+                          Object.keys(r.results).map((k) => `段落${Number(k) + 1}`),
+                        ).join(', '),
+                      })}
                     </p>
                   </div>
                 )}
@@ -556,7 +568,7 @@ export default function App() {
             right={
               isStreaming || isReviewing ? (
                 <RewritePanel
-                  title={`改写结果 — Round ${currentRound}`}
+                  title={t('rewrite.resultTitle', { n: currentRound })}
                   paragraphs={article.paragraphs}
                   targetIndices={article.targetIndices}
                   streamedContents={article.rewrittenContents}
@@ -582,7 +594,7 @@ export default function App() {
               ) : isDone ? (
                 <div className="space-y-3">
                   <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
-                    最终结果
+                    {t('rewrite.finalResult')}
                   </h2>
                   <div className="bg-white rounded-lg border border-emerald-200 p-4">
                     <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
@@ -595,7 +607,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-slate-300 text-sm">
-                  选择左侧段落，点击下方按钮开始改写
+                  {t('rewrite.waitingPlaceholder')}
                 </div>
               )
             }
@@ -614,30 +626,31 @@ export default function App() {
                     onClick={handleRewriteSelected}
                     className="px-5 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 cursor-pointer"
                   >
-                    重写选中段落 ({article.targetIndices.length})
+                    {t('rewrite.rewriteSelected', { n: article.targetIndices.length })}
                   </button>
                   <button
                     onClick={handleReset}
                     className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 cursor-pointer"
                   >
-                    返回首页
+                    {t('rewrite.goHome')}
                   </button>
                 </>
               )}
               {isStreaming && (
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-amber-600 font-medium">
-                    正在改写... ({
-                      Object.values(article.cardStates).filter(
+                    {t('rewrite.streamingProgress', {
+                      done: Object.values(article.cardStates).filter(
                         (s) => s === 'stream_done',
-                      ).length
-                    }/{article.targetIndices.length} 段完成)
+                      ).length,
+                      total: article.targetIndices.length,
+                    })}
                   </span>
                   <button
                     onClick={handleCancelStream}
                     className="px-3 py-1 text-xs border border-red-300 text-red-500 rounded hover:bg-red-50 cursor-pointer"
                   >
-                    取消全部
+                    {t('rewrite.cancelAll')}
                   </button>
                 </div>
               )}
@@ -646,7 +659,7 @@ export default function App() {
                   onClick={handleCommit}
                   className="px-5 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 cursor-pointer"
                 >
-                  提交本轮 → 继续下一轮
+                  {t('rewrite.commitRound')}
                 </button>
               )}
               {isDone && (
@@ -655,13 +668,13 @@ export default function App() {
                     onClick={handleNextRound}
                     className="px-5 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 cursor-pointer"
                   >
-                    开始下一轮
+                    {t('rewrite.nextRound')}
                   </button>
                   <button
                     onClick={handleReset}
                     className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 cursor-pointer"
                   >
-                    重新开始
+                    {t('rewrite.reset')}
                   </button>
                 </>
               )}
@@ -670,7 +683,7 @@ export default function App() {
             <div className="text-xs text-slate-400">
               {article.targetIndices.length > 0 && (
                 <span>
-                  已选: {article.targetIndices.map((i) => i + 1).join(', ')}
+                  {t('rewrite.selected', { list: article.targetIndices.map((i) => i + 1).join(', ') })}
                 </span>
               )}
             </div>
