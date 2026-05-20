@@ -113,6 +113,14 @@
     "preview": "预览",
     "restore": "恢复到此版本"
   },
+  "about": {
+    "title": "关于",
+    "close": "关闭",
+    "version": "版本号",
+    "buildDate": "构建日期",
+    "developer": "开发者",
+    "techStack": "技术栈"
+  },
   "debug": {
     "clear": "清除",
     "waitingEvents": "等待事件...",

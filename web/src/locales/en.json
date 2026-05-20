@@ -113,6 +113,14 @@
     "preview": "Preview",
     "restore": "Restore"
   },
+  "about": {
+    "title": "About",
+    "close": "Close",
+    "version": "Version",
+    "buildDate": "Build Date",
+    "developer": "Developer",
+    "techStack": "Tech Stack"
+  },
   "debug": {
     "clear": "Clear",
     "waitingEvents": "Waiting for events...",

@@ -25,6 +25,10 @@ models:
     api_base: "http://localhost:11434/v1"
     api_key: "ollama"
 
+server:
+  port: 8000           # 后端 API 端口 / Backend API port
+  frontend_port: 5173  # 前端开发服务器端口 / Frontend dev server port
+
 rewrite:
   candidates_count: 3
   temperature: 0.7

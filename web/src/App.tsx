@@ -21,6 +21,7 @@ import { useTranslation } from './i18n/I18nContext';
 import AuthGate from './components/AuthGate';
 import AdminPanel from './components/AdminPanel';
 import DebugPanel from './components/DebugPanel';
+import AboutPage from './components/AboutPage';
 
 const API_BASE = '/api';
 
@@ -50,6 +51,9 @@ export default function App() {
 
   // Admin panel state
   const [showAdmin, setShowAdmin] = useState(false);
+
+  // About page state
+  const [showAbout, setShowAbout] = useState(false);
 
   // Track which history entry we're continuing from, so new rounds
   // get saved back to the same entry instead of creating duplicates
@@ -469,6 +473,13 @@ export default function App() {
               </button>
             )}
             <button
+              onClick={() => setShowAbout(true)}
+              className="text-slate-400 hover:text-slate-600 text-sm cursor-pointer px-1"
+              title={t('about.title')}
+            >
+              ?
+            </button>
+            <button
               onClick={() => setLang(lang === 'zh-CN' ? 'en' : 'zh-CN')}
               className="text-slate-400 hover:text-slate-600 text-sm cursor-pointer px-1"
               title={lang === 'zh-CN' ? 'Switch to English' : '切换到中文'}
@@ -712,6 +723,11 @@ export default function App() {
           token={auth.token}
           onClose={() => setShowAdmin(false)}
         />
+      )}
+
+      {/* About page */}
+      {showAbout && (
+        <AboutPage onClose={() => setShowAbout(false)} />
       )}
 
       {/* Model config drawer */}

@@ -771,6 +771,11 @@ async def debug_sessions(
     return {"sessions": sessions, "count": len(sessions)}
 
 
-def run_server(host: str = "0.0.0.0", port: int = 8000) -> None:
+def run_server(host: str = "0.0.0.0", port: int | None = None) -> None:
     import uvicorn
+    if port is None:
+        try:
+            port = load_config().server.port
+        except Exception:
+            port = 8000
     uvicorn.run(app, host=host, port=port)

@@ -26,3 +26,11 @@ Thumbs.db
 # logs
 logs/
 logs/rewrite-engine.log
+
+# Docker
+Dockerfile.*.local
+docker-compose.override.yml
+
+# Environment
+.env
+.env.local

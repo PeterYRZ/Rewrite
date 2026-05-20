@@ -34,8 +34,14 @@ class ValidationConfig(BaseModel):
     strictness: str = "medium"  # low | medium | high
 
 
+class ServerConfig(BaseModel):
+    port: int = 8000
+    frontend_port: int = 5173
+
+
 class AppConfig(BaseModel):
     models: list[ModelConfig]
+    server: ServerConfig = ServerConfig()
     rewrite: RewriteConfig = RewriteConfig()
     validation: ValidationConfig = ValidationConfig()
 
