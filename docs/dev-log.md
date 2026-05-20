@@ -630,3 +630,65 @@ Rounds: 2（历史完整追踪）
 **新增接口**：2 SSE + 5 REST + 2 Config = 9 个端点
 **新增前端**：8 组件 + 4 hook
 **删除组件**：CandidatePicker, ModeSelector
+
+---
+
+## 2026-05-20 — Phase 8+ 规划：功能完善
+
+### 规划内容
+
+完成核心改写功能后，进入工程化完善阶段，共 5 个 Phase（8–12）：
+
+| Phase | 内容 | 关键产出 |
+|-------|------|----------|
+| Phase 8 | 结果导出 + 配置抽屉 + 历史记录 | ModelConfigDrawer, HistoryPage, useHistory |
+| Phase 9 | 版本回溯（段落级版本管理 + 对比） | VersionTimeline, ParagraphVersion |
+| Phase 10 | 用户认证（Access Key + 管理员） | AuthGate, useAuth, /api/auth/* |
+| Phase 11 | DEBUG 模式（进度控制 + 日志面板） | DebugPanel, FAB, /api/debug/logs |
+| Phase 12 | 多语言 i18n（中文 + 英文） | locales/zh-CN.json, en.json |
+
+### 技术决策
+
+| 决策点 | 选择 |
+|--------|------|
+| 配置面板 UI | 右侧抽屉滑出 |
+| 历史存储 | localStorage（支持断点续改） |
+| 用户认证 | 纯 Access Key 认证 |
+| i18n 方案 | react-i18next / 轻量自定义 |
+
+---
+
+## 2026-05-20 — Phase 8 完成：结果导出 + 配置抽屉 + 历史记录
+
+### 完成内容
+
+**结果导出** (`web/src/components/ResultToolbar.tsx`)
+- 📋 复制全文：`navigator.clipboard.writeText()` + 2s toast 反馈（兼容降级）
+- 📥 下载 .txt：Blob → URL.createObjectURL → `<a download>` 触发
+- 集成在 done 阶段结果区
+
+**模型配置抽屉** (`web/src/components/ModelConfigDrawer.tsx`)
+- 右侧滑出面板（transform + transition + backdrop）
+- 模型列表（单选 + 删除）、新增模型表单（name/provider/model/api_base/api_key）
+- Temperature 滑块（0–2，步长 0.1）、Max Tokens 输入
+- Validation 开关 + 严格度显示
+- Header ⚙ 图标触发
+
+**后端配置扩展** (`src/rewrite_engine/api/server.py`)
+- `PUT /api/config` 新增 `add_model` / `delete_model` 字段
+- 运行时热添加/删除模型，自动处理 provider 切换
+
+**历史记录**
+- `useHistory.ts`：localStorage CRUD，`HistoryEntry` 存储完整 `SessionState`
+- `HistoryPage.tsx`：卡片列表（标题/时间/轮次）+ 继续编辑 + 删除
+- commit 时自动保存、Header 「📋 历史」按钮触发
+
+### 构建验证
+
+- TypeScript: 0 errors
+- Vite build: 33 modules → 223KB JS + 22KB CSS
+- 模型 CRUD: add → delete → list 验证通过
+
+### 下一步
+
+Phase 9：版本回溯（段落级版本管理 + 对比）

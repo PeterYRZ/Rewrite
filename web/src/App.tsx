@@ -8,6 +8,13 @@ import ArticlePanel from './components/ArticlePanel';
 import RewritePanel from './components/RewritePanel';
 import RoundIndicator from './components/RoundIndicator';
 import ConfigPanel from './components/ConfigPanel';
+import ModelConfigDrawer from './components/ModelConfigDrawer';
+import ResultToolbar from './components/ResultToolbar';
+import HistoryPage from './components/HistoryPage';
+import { useHistory } from './hooks/useHistory';
+import type { HistoryEntry } from './hooks/useHistory';
+
+const API_BASE = '/api';
 
 export default function App() {
   const [inputText, setInputText] = useState('');
@@ -16,9 +23,14 @@ export default function App() {
   const session = useRewriteSession();
   const stream = useStreamRewrite();
   const configHook = useConfig();
+  const history = useHistory();
 
   // Guidance text per paragraph
   const [guidanceMap, setGuidanceMap] = useState<Record<number, string>>({});
+
+  // Drawer & history state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // ---- Load article ----
   const handleLoadArticle = useCallback(async () => {
@@ -136,6 +148,75 @@ export default function App() {
     [article],
   );
 
+  // ---- Config drawer actions ----
+  const handleAddModel = useCallback(async (form: {
+    name: string; provider: string; model: string; api_base: string; api_key: string;
+  }) => {
+    try {
+      const res = await fetch(`${API_BASE}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ add_model: form }),
+      });
+      if (!res.ok) return false;
+      await configHook.refetch();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [configHook]);
+
+  const handleDeleteModel = useCallback(async (name: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delete_model: name }),
+      });
+      if (!res.ok) return false;
+      await configHook.refetch();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [configHook]);
+
+  const handleTokenChange = useCallback((tokens: number) => {
+    configHook.updateConfig({ max_tokens: tokens });
+  }, [configHook]);
+
+  // ---- History continue ----
+  const handleHistoryContinue = useCallback((entry: HistoryEntry) => {
+    // Restore article state
+    if (entry.sessionState.current_article) {
+      article.replaceParagraphs(entry.sessionState.current_article.paragraphs);
+    }
+    // Create a new session (or restore the old ID via API)
+    session.reset();
+    // Load the article text into the hook
+    article.loadArticle(entry.articleText);
+    // Create a session with the restored article
+    setTimeout(async () => {
+      await session.createSession(entry.articleText);
+      // Restore rounds
+      for (const r of entry.sessionState.rounds || []) {
+        if (r.committed) {
+          await session.startRound(r.target_indices);
+          for (const [idx, content] of Object.entries(r.results)) {
+            await session.recordResult(Number(idx), content as string);
+          }
+          await session.commitRound();
+          if (session.sessionState?.current_article?.paragraphs) {
+            article.replaceParagraphs(session.sessionState.current_article.paragraphs);
+          }
+        }
+      }
+      session.setPhase('ready');
+      article.resetSelection();
+    }, 100);
+    setShowHistory(false);
+  }, [article, session]);
+
   // ---- Commit round ----
   const handleCommit = useCallback(async () => {
     const data = await session.commitRound();
@@ -144,7 +225,12 @@ export default function App() {
     }
     article.resetSelection();
     session.setPhase('done');
-  }, [session, article]);
+
+    // Save to history
+    if (session.sessionState) {
+      history.saveSession(session.sessionState);
+    }
+  }, [session, article, history]);
 
   // ---- Start next round ----
   const handleNextRound = useCallback(() => {
@@ -184,15 +270,33 @@ export default function App() {
               <RoundIndicator currentRound={currentRound} rounds={rounds} />
             )}
           </div>
-          {configHook.config && (
-            <ConfigPanel
-              config={configHook.config}
-              activeModel={configHook.activeModel}
-              loading={configHook.loading}
-              onModelChange={(m) => configHook.updateConfig({ model: m })}
-              onTemperatureChange={(t) => configHook.updateConfig({ temperature: t })}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {configHook.config && (
+              <ConfigPanel
+                config={configHook.config}
+                activeModel={configHook.activeModel}
+                loading={configHook.loading}
+                onModelChange={(m) => configHook.updateConfig({ model: m })}
+                onTemperatureChange={(t) => configHook.updateConfig({ temperature: t })}
+              />
+            )}
+            {!isIdle && (
+              <button
+                onClick={() => setShowHistory(true)}
+                className="text-slate-400 hover:text-slate-600 text-sm cursor-pointer px-2"
+                title="历史记录"
+              >
+                📋 历史
+              </button>
+            )}
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="text-slate-400 hover:text-slate-600 text-lg cursor-pointer px-1"
+              title="模型配置"
+            >
+              ⚙
+            </button>
+          </div>
         </div>
       </header>
 
@@ -216,6 +320,20 @@ export default function App() {
             </button>
             {configHook.error && (
               <p className="text-sm text-red-500">配置加载失败: {configHook.error}</p>
+            )}
+
+            {/* Recent history on idle page */}
+            {history.entries.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-500 mb-3">最近改写</h3>
+                <HistoryPage
+                  entries={history.entries.slice(0, 5)}
+                  onContinue={handleHistoryContinue}
+                  onDelete={history.deleteEntry}
+                  onRename={history.renameEntry}
+                  compact
+                />
+              </div>
             )}
           </div>
         )}
@@ -287,6 +405,9 @@ export default function App() {
                       {article.paragraphs.map((p) => p.content).join('\n\n')}
                     </p>
                   </div>
+                  <ResultToolbar
+                    text={article.paragraphs.map((p) => p.content).join('\n\n')}
+                  />
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-slate-300 text-sm">
@@ -352,6 +473,35 @@ export default function App() {
           </div>
         </footer>
       )}
+
+      {/* History page overlay */}
+      {showHistory && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-start justify-center pt-20 overflow-y-auto">
+          <div className="w-full max-w-xl px-4">
+            <HistoryPage
+              entries={history.entries}
+              onContinue={handleHistoryContinue}
+              onDelete={history.deleteEntry}
+              onRename={history.renameEntry}
+              onClose={() => setShowHistory(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Model config drawer */}
+      <ModelConfigDrawer
+        open={drawerOpen}
+        config={configHook.config}
+        activeModel={configHook.activeModel}
+        loading={configHook.loading}
+        onClose={() => setDrawerOpen(false)}
+        onModelChange={(m) => configHook.updateConfig({ model: m })}
+        onTemperatureChange={(t) => configHook.updateConfig({ temperature: t })}
+        onTokenChange={handleTokenChange}
+        onAddModel={handleAddModel}
+        onDeleteModel={handleDeleteModel}
+      />
     </div>
   );
 }

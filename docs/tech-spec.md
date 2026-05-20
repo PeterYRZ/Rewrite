@@ -1,6 +1,6 @@
 # 技术规范
 
-> 最后更新：2026-05-19
+> 最后更新：2026-05-20
 
 ## 1. 项目定位
 
@@ -298,3 +298,118 @@ Rewrite/
 - **Step 4**：浏览器中加载文章 → 选中段落 → 右侧逐字出现改写内容
 - **Step 5**：输入"请用更口语化的风格" → 重新流式生成 → 风格变化可见
 - **Step 6**：第一轮改段落 2、4 → 确认 → 第二轮选段落 1、3 → 全文连贯
+
+---
+
+## 10. Phase 8+ 功能规划
+
+### 10.1 Phase 8: 结果导出 + 配置抽屉 + 历史记录
+
+#### 复制 & 下载
+
+- 结果区添加「📋 复制全文」「📥 下载 .txt」按钮
+- 复制：`navigator.clipboard.writeText()` + toast
+- 下载：Blob → `URL.createObjectURL` → `<a download>`
+
+#### 模型配置抽屉 (`ModelConfigDrawer.tsx`)
+
+- Header ⚙ 图标 → 右侧滑出抽屉面板（transform + transition）
+- 内容：模型列表（单选 + 新增 + 删除）、Temperature 滑块、Max Tokens、Candidates Count、Validation 开关
+- 通过 `PUT /api/config` 实时更新
+
+#### 历史记录 (`useHistory.ts`)
+
+- localStorage 存储，数据结构 `HistoryEntry { id, title, articleText, roundCount, updatedAt, sessionState }`
+- 每次 commit 轮次时自动保存
+- 历史列表页：卡片网格 → 点击继续编辑 → 恢复 sessionState
+
+### 10.2 Phase 9: 版本回溯
+
+#### 段落级版本管理
+
+- `ParagraphVersion { versionId, paragraphIndex, content, roundNumber, createdAt, label }`
+- 每次 commit 时自动记录所有被改写段落的版本
+- `VersionTimeline.tsx`：点击段落旁图标 → 展开版本时间线
+- 操作：预览（右侧高亮）/ 恢复（替换当前）/ 添加标签
+- 版本对比：字符级 diff 高亮
+
+### 10.3 Phase 10: 用户认证
+
+#### Access Key 认证
+
+```
+users.json:
+{
+  "users": [
+    {"username": "admin", "access_key": "rw-admin-xxxx", "role": "admin"},
+    {"username": "user1", "access_key": "rw-user-xxxx", "role": "user"}
+  ]
+}
+```
+
+- `POST /api/auth/login` — `{ access_key }` → `{ token, username, role }`
+- `GET /api/auth/me` — 验证 token
+- Middleware: `verify_token` 注入所有 `/api/rewrite/*` 端点
+- 管理员端点：`/api/admin/users` (CRUD)、`/api/admin/sessions`
+- 前端：`AuthGate.tsx`（Key 输入页）、`useAuth.ts`（token 管理）
+
+### 10.4 Phase 11: DEBUG 模式
+
+#### 启用
+
+- URL `?debug=true` 或 localStorage flag
+
+#### 段落进度控制
+
+- RewriteCard 顶部进度条（streamedLength / estimatedTotal）
+- ⏹ 终止按钮（abort SSE fetch）、🔄 重试按钮
+- 显示实际耗时
+
+#### 日志面板 (`DebugPanel.tsx`)
+
+- FAB 悬浮按钮（右下角）→ 点击弹出底部面板
+- 内容：session ID、phase、最后一次 SSE 事件原始数据、前端日志（token 计数/耗时/错误）
+- 导出日志 JSON
+- 后端：`logging` 模块 → `logs/rewrite-engine.log`；`request_id` 追踪
+- `GET /api/debug/logs`
+
+### 10.5 Phase 12: 多语言 (i18n)
+
+- 方案：轻量 `react-i18next` 或自定义 context
+- 翻译文件：`web/src/locales/zh-CN.json`、`en.json`
+- 范围：所有 UI 文本、badge、按钮、错误消息、空状态
+- 切换：Header 🌐 按钮，localStorage 持久化
+
+### 10.6 Phase 8+ API 新增端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/auth/login` | POST | Access Key 登录 |
+| `/api/auth/me` | GET | 验证 token |
+| `/api/admin/users` | GET/POST/DELETE | 管理员管理用户 |
+| `/api/admin/sessions` | GET | 管理员查看会话 |
+| `/api/debug/logs` | GET | 获取后端日志 |
+
+### 10.7 Phase 8+ 前端新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `ModelConfigDrawer.tsx` | 右侧滑出配置抽屉 |
+| `HistoryPage.tsx` | 历史记录列表 |
+| `VersionTimeline.tsx` | 段落版本时间线 |
+| `AuthGate.tsx` | 登录门禁页 |
+| `DebugPanel.tsx` | DEBUG 日志面板（FAB） |
+| `useAuth.ts` | 认证状态管理 |
+| `useHistory.ts` | localStorage 历史管理 |
+| `locales/zh-CN.json` | 中文翻译 |
+| `locales/en.json` | 英文翻译 |
+
+### 10.8 实施顺序
+
+| 阶段 | 内容 | Step 数 |
+|------|------|---------|
+| Phase 8 | 复制下载 + 配置抽屉 + 历史记录 | 3 |
+| Phase 9 | 版本回溯 | 2 |
+| Phase 10 | 用户认证 | 3 |
+| Phase 11 | DEBUG 模式 | 2 |
+| Phase 12 | 多语言 i18n | 2 |

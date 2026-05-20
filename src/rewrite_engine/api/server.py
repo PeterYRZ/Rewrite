@@ -440,6 +440,8 @@ class ConfigUpdateRequest(PydanticBase):
     temperature: float | None = None
     candidates_count: int | None = None
     max_tokens: int | None = None
+    add_model: dict[str, str] | None = None
+    delete_model: str | None = None
 
 
 class StartRoundRequest(PydanticBase):
@@ -561,6 +563,27 @@ async def update_config(req: ConfigUpdateRequest) -> dict[str, Any]:
         if _provider and hasattr(_provider, '_client'):
             await _provider._client.close()  # type: ignore
         _provider = await create_provider(model_config)
+
+    if req.add_model is not None:
+        from rewrite_engine.models.config import ModelConfig
+        new_m = ModelConfig(
+            name=req.add_model["name"],
+            provider=req.add_model.get("provider", "openai"),
+            model=req.add_model["model"],
+            api_base=req.add_model.get("api_base", "https://api.openai.com/v1"),
+            api_key=req.add_model.get("api_key", ""),
+        )
+        _config.models.append(new_m)
+
+    if req.delete_model is not None:
+        if len(_config.models) <= 1:
+            return {"error": "Cannot delete the last model"}
+        _config.models = [m for m in _config.models if m.name != req.delete_model]
+        if _config.default_model.name == req.delete_model:
+            # Recreate provider with the new default
+            if _provider and hasattr(_provider, '_client'):
+                await _provider._client.close()  # type: ignore
+            _provider = await create_provider(_config.default_model)
 
     if req.temperature is not None:
         _config.rewrite.temperature = req.temperature
