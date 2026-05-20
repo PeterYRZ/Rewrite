@@ -131,3 +131,15 @@ export interface ConfigUpdatePayload {
   candidates_count?: number;
   max_tokens?: number;
 }
+
+// ---- Phase 9: Version backtracking ----
+
+export interface ParagraphVersion {
+  versionId: string;
+  paragraphIndex: number;
+  sessionId: string;
+  content: string;
+  roundNumber: number;
+  createdAt: string;
+  label: string;
+}

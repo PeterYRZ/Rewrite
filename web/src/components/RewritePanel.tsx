@@ -1,4 +1,4 @@
-import type { Paragraph, RewriteCardState } from '../types';
+import type { Paragraph, ParagraphVersion, RewriteCardState } from '../types';
 import RewriteCard from './RewriteCard';
 
 interface Props {
@@ -12,8 +12,14 @@ interface Props {
   onAccept: (paraIndex: number) => void;
   onRegenerate: (paraIndex: number) => void;
   onStartGuidance: (paraIndex: number) => void;
+  onCancelGuidance: (paraIndex: number) => void;
   onStartEdit: (paraIndex: number) => void;
   onConfirmEdit: (paraIndex: number, content: string) => void;
+  getVersionsForParagraph: (paraIndex: number) => ParagraphVersion[];
+  previewVersion: ParagraphVersion | null;
+  onVersionPreview: (version: ParagraphVersion | null) => void;
+  onVersionRestore: (version: ParagraphVersion) => void;
+  onUpdateVersionLabel: (versionId: string, label: string) => void;
 }
 
 export default function RewritePanel({
@@ -27,8 +33,14 @@ export default function RewritePanel({
   onAccept,
   onRegenerate,
   onStartGuidance,
+  onCancelGuidance,
   onStartEdit,
   onConfirmEdit,
+  getVersionsForParagraph,
+  previewVersion,
+  onVersionPreview,
+  onVersionRestore,
+  onUpdateVersionLabel,
 }: Props) {
   return (
     <div className="space-y-3">
@@ -38,7 +50,6 @@ export default function RewritePanel({
 
       {paragraphs.map((p) => {
         if (!targetIndices.includes(p.index)) {
-          // Non-target paragraphs: show as unchanged
           return (
             <div
               key={p.index}
@@ -53,21 +64,33 @@ export default function RewritePanel({
           );
         }
 
-        // Target paragraphs: show rewrite card
+        const paraVersions = getVersionsForParagraph(p.index);
+        const isPreviewing = previewVersion?.paragraphIndex === p.index;
+
         return (
           <RewriteCard
             key={p.index}
             paragraphIndex={p.index}
             originalContent={p.content}
-            streamedContent={streamedContents[p.index] || ''}
+            streamedContent={
+              isPreviewing && previewVersion
+                ? previewVersion.content
+                : (streamedContents[p.index] || '')
+            }
             cardState={cardStates[p.index] || 'pending'}
             guidance={guidanceMap[p.index] || ''}
             onGuidanceChange={(text) => onGuidanceChange(p.index, text)}
             onAccept={() => onAccept(p.index)}
             onRegenerate={() => onRegenerate(p.index)}
             onStartGuidance={() => onStartGuidance(p.index)}
+            onCancelGuidance={() => onCancelGuidance(p.index)}
             onStartEdit={() => onStartEdit(p.index)}
             onConfirmEdit={(content) => onConfirmEdit(p.index, content)}
+            versions={paraVersions}
+            previewVersion={isPreviewing ? previewVersion : null}
+            onVersionPreview={onVersionPreview}
+            onVersionRestore={onVersionRestore}
+            onUpdateVersionLabel={onUpdateVersionLabel}
           />
         );
       })}

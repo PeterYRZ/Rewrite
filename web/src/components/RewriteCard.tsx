@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { RewriteCardState } from '../types';
+import type { ParagraphVersion, RewriteCardState } from '../types';
+import VersionTimeline from './VersionTimeline';
 
 interface Props {
   paragraphIndex: number;
@@ -11,8 +12,14 @@ interface Props {
   onAccept: () => void;
   onRegenerate: () => void;
   onStartGuidance: () => void;
+  onCancelGuidance: () => void;
   onStartEdit: () => void;
   onConfirmEdit: (content: string) => void;
+  versions?: ParagraphVersion[];
+  previewVersion?: ParagraphVersion | null;
+  onVersionPreview?: (version: ParagraphVersion | null) => void;
+  onVersionRestore?: (version: ParagraphVersion) => void;
+  onUpdateVersionLabel?: (versionId: string, label: string) => void;
 }
 
 export default function RewriteCard({
@@ -25,8 +32,14 @@ export default function RewriteCard({
   onAccept,
   onRegenerate,
   onStartGuidance,
+  onCancelGuidance,
   onStartEdit,
   onConfirmEdit,
+  versions = [],
+  previewVersion = null,
+  onVersionPreview,
+  onVersionRestore,
+  onUpdateVersionLabel,
 }: Props) {
   const [editText, setEditText] = useState(streamedContent);
 
@@ -87,9 +100,20 @@ export default function RewriteCard({
               if (e.key === 'Enter' && guidance.trim()) {
                 onRegenerate();
               }
+              if (e.key === 'Escape') {
+                onCancelGuidance();
+              }
             }}
           />
-          <p className="text-xs text-slate-400 mt-1">按 Enter 提交</p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-xs text-slate-400">按 Enter 提交 · Esc 取消</p>
+            <button
+              onClick={onCancelGuidance}
+              className="px-2 py-0.5 text-xs rounded border border-slate-300 text-slate-500 hover:bg-slate-100 cursor-pointer"
+            >
+              取消
+            </button>
+          </div>
         </div>
       )}
 
@@ -144,6 +168,33 @@ export default function RewriteCard({
           </span>
         )}
       </div>
+
+      {/* Version history (shown when versions exist) */}
+      {onVersionPreview && onVersionRestore && onUpdateVersionLabel && (
+        <VersionTimeline
+          versions={versions}
+          currentContent={streamedContent}
+          activePreviewId={previewVersion?.versionId ?? null}
+          onPreview={onVersionPreview}
+          onRestore={onVersionRestore}
+          onUpdateLabel={onUpdateVersionLabel}
+        />
+      )}
+
+      {/* Preview banner */}
+      {previewVersion && (
+        <div className="mt-2 p-2 rounded bg-blue-50 border border-blue-200 text-xs flex items-center justify-between">
+          <span className="text-blue-600">
+            正在预览: {previewVersion.label} (Round {previewVersion.roundNumber})
+          </span>
+          <button
+            onClick={() => onVersionPreview?.(null)}
+            className="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-600 hover:bg-blue-200 cursor-pointer"
+          >
+            退出预览
+          </button>
+        </div>
+      )}
     </div>
   );
 }

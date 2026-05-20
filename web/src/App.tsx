@@ -13,6 +13,8 @@ import ResultToolbar from './components/ResultToolbar';
 import HistoryPage from './components/HistoryPage';
 import { useHistory } from './hooks/useHistory';
 import type { HistoryEntry } from './hooks/useHistory';
+import { useVersions } from './hooks/useVersions';
+import type { ParagraphVersion } from './types';
 
 const API_BASE = '/api';
 
@@ -24,6 +26,7 @@ export default function App() {
   const stream = useStreamRewrite();
   const configHook = useConfig();
   const history = useHistory();
+  const versions = useVersions(session.sessionId);
 
   // Guidance text per paragraph
   const [guidanceMap, setGuidanceMap] = useState<Record<number, string>>({});
@@ -31,6 +34,9 @@ export default function App() {
   // Drawer & history state
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+
+  // Version preview state
+  const [previewVersion, setPreviewVersion] = useState<ParagraphVersion | null>(null);
 
   // ---- Load article ----
   const handleLoadArticle = useCallback(async () => {
@@ -133,6 +139,13 @@ export default function App() {
     [article],
   );
 
+  const handleCancelGuidance = useCallback(
+    (paraIndex: number) => {
+      article.setCardState(paraIndex, 'stream_done');
+    },
+    [article],
+  );
+
   const handleStartEdit = useCallback(
     (paraIndex: number) => {
       article.setCardState(paraIndex, 'editing');
@@ -185,6 +198,20 @@ export default function App() {
     configHook.updateConfig({ max_tokens: tokens });
   }, [configHook]);
 
+  // ---- Version actions ----
+  const handleVersionPreview = useCallback((v: ParagraphVersion | null) => {
+    setPreviewVersion(v);
+  }, []);
+
+  const handleVersionRestore = useCallback(
+    (v: ParagraphVersion) => {
+      article.setRewrittenContent(v.paragraphIndex, v.content);
+      article.setCardState(v.paragraphIndex, 'stream_done');
+      setPreviewVersion(null);
+    },
+    [article],
+  );
+
   // ---- History continue ----
   const handleHistoryContinue = useCallback((entry: HistoryEntry) => {
     // Restore article state
@@ -230,7 +257,16 @@ export default function App() {
     if (session.sessionState) {
       history.saveSession(session.sessionState);
     }
-  }, [session, article, history]);
+
+    // Record versions for each rewritten paragraph
+    const currentRoundNum = session.sessionState?.round_count ?? 1;
+    for (const idx of article.confirmedIndices) {
+      const content = article.rewrittenContents[idx];
+      if (content) {
+        versions.addVersion(idx, content, currentRoundNum);
+      }
+    }
+  }, [session, article, history, versions]);
 
   // ---- Start next round ----
   const handleNextRound = useCallback(() => {
@@ -392,8 +428,14 @@ export default function App() {
                   onAccept={handleAccept}
                   onRegenerate={handleRegenerate}
                   onStartGuidance={handleStartGuidance}
+                  onCancelGuidance={handleCancelGuidance}
                   onStartEdit={handleStartEdit}
                   onConfirmEdit={handleConfirmEdit}
+                  getVersionsForParagraph={versions.getVersionsForParagraph}
+                  previewVersion={previewVersion}
+                  onVersionPreview={handleVersionPreview}
+                  onVersionRestore={handleVersionRestore}
+                  onUpdateVersionLabel={versions.updateLabel}
                 />
               ) : isDone ? (
                 <div className="space-y-3">

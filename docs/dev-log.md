@@ -689,6 +689,36 @@ Rounds: 2（历史完整追踪）
 - Vite build: 33 modules → 223KB JS + 22KB CSS
 - 模型 CRUD: add → delete → list 验证通过
 
+---
+
+## 2026-05-20 — Phase 9 完成：版本回溯
+
+### 完成内容
+
+**数据模型** (`web/src/types.ts`)
+- `ParagraphVersion { versionId, paragraphIndex, sessionId, content, roundNumber, createdAt, label }`
+
+**版本存储** (`web/src/hooks/useVersions.ts`)
+- localStorage 持久化，key: `rw-versions-{sessionId}`
+- `addVersion()` — 记录新版本
+- `getVersionsForParagraph(idx)` — 按段落获取所有历史版本（按轮次倒序）
+- `updateLabel()` — 重命名版本标签
+
+**版本记录**
+- 每次 commit 轮次时自动为所有已确认段落记录版本
+- label 自动生成为 `"Round N"`，可点击编辑
+
+**VersionTimeline 组件** (`web/src/components/VersionTimeline.tsx`)
+- ▸ 展开/折叠按钮（带版本数量 badge）
+- 当前版本：绿底高亮显示
+- 历史版本列表：每条显示标签（可内联编辑）、时间、内容预览（line-clamp-2）、字数
+- 操作按钮：**预览**（高亮显示在卡片中）、**恢复此版本**（替换当前内容 + 蓝底 banner 提示）
+
+### 构建验证
+
+- TypeScript: 0 errors
+- Vite build: 35 modules → 229KB JS + 23KB CSS
+
 ### 下一步
 
-Phase 9：版本回溯（段落级版本管理 + 对比）
+Phase 10：用户认证（Access Key + 管理员面板）
