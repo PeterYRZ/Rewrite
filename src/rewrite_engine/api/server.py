@@ -7,7 +7,7 @@ import json
 import uuid
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel as PydanticBase
@@ -19,6 +19,7 @@ from rewrite_engine.agents.generator import (
 )
 from rewrite_engine.agents.scheduler import SchedulerAgent
 from rewrite_engine.agents.validator import ValidationReport, validate
+from rewrite_engine.api.auth import User, auth
 from rewrite_engine.llm.provider import LLMProvider, create_provider
 from rewrite_engine.models.article import Article, ProjectState
 from rewrite_engine.models.config import AppConfig, load_config
@@ -453,13 +454,39 @@ class RecordResultRequest(PydanticBase):
     content: str
 
 
+def _get_username(authorization: str = "") -> str:
+    """Extract username from Bearer token. Returns empty string if invalid."""
+    token = authorization.strip()
+    if token.startswith("Bearer "):
+        user = auth.verify_token(token[7:].strip())
+        return user.username if user else ""
+    return ""
+
+
+def _check_session_owner(session: RewriteSession | None, authorization: str) -> dict[str, Any] | None:
+    """Return error dict if session doesn't exist or user doesn't own it."""
+    if not session:
+        return {"error": "Session not found"}
+    username = _get_username(authorization)
+    if not username:
+        return {"error": "Authentication required"}
+    if session.owner and session.owner != username:
+        return {"error": "Access denied: not your session"}
+    if not session.owner:
+        return {"error": "Session has no owner — re-create it"}
+    return None
+
+
 @app.post("/api/rewrite/session/create")
-async def session_create(req: SessionCreateRequest) -> dict[str, Any]:
+async def session_create(req: SessionCreateRequest, authorization: str = Header(default="")) -> dict[str, Any]:
     if _provider is None or _config is None:
         return {"error": "Server not initialized"}
 
+    username = _get_username(authorization)
+    if not username:
+        return {"error": "Authentication required"}
     article = Article.from_text(req.article_text)
-    session = RewriteSession.create(article)
+    session = RewriteSession.create(article, owner=username)
     _rewrite_sessions[session.session_id] = session
 
     return {
@@ -470,11 +497,10 @@ async def session_create(req: SessionCreateRequest) -> dict[str, Any]:
 
 @app.post("/api/rewrite/session/{session_id}/start-round")
 async def session_start_round(
-    session_id: str, req: StartRoundRequest,
+    session_id: str, req: StartRoundRequest, authorization: str = Header(default=""),
 ) -> dict[str, Any]:
     session = _rewrite_sessions.get(session_id)
-    if not session:
-        return {"error": "Session not found"}
+    if err := _check_session_owner(session, authorization): return err
 
     rnd = session.start_round(req.target_indices)
     return {
@@ -486,21 +512,19 @@ async def session_start_round(
 
 @app.post("/api/rewrite/session/{session_id}/record")
 async def session_record(
-    session_id: str, req: RecordResultRequest,
+    session_id: str, req: RecordResultRequest, authorization: str = Header(default=""),
 ) -> dict[str, Any]:
     session = _rewrite_sessions.get(session_id)
-    if not session:
-        return {"error": "Session not found"}
+    if err := _check_session_owner(session, authorization): return err
 
     session.record_result(req.paragraph_index, req.content)
     return {"status": "ok", "results": session.active_round.results if session.active_round else {}}
 
 
 @app.post("/api/rewrite/session/{session_id}/commit")
-async def session_commit(session_id: str) -> dict[str, Any]:
+async def session_commit(session_id: str, authorization: str = Header(default="")) -> dict[str, Any]:
     session = _rewrite_sessions.get(session_id)
-    if not session:
-        return {"error": "Session not found"}
+    if err := _check_session_owner(session, authorization): return err
 
     committed = session.commit_round()
     if committed is None:
@@ -516,10 +540,9 @@ async def session_commit(session_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/rewrite/session/{session_id}")
-async def session_status(session_id: str) -> dict[str, Any]:
+async def session_status(session_id: str, authorization: str = Header(default="")) -> dict[str, Any]:
     session = _rewrite_sessions.get(session_id)
-    if not session:
-        return {"error": "Session not found"}
+    if err := _check_session_owner(session, authorization): return err
 
     return session.to_dict()
 
@@ -599,6 +622,76 @@ async def update_config(req: ConfigUpdateRequest) -> dict[str, Any]:
         "candidates_count": _config.rewrite.candidates_count,
         "max_tokens": _config.rewrite.max_tokens,
     }
+
+
+# --- Phase 10: Auth Endpoints ---
+
+
+class LoginRequest(PydanticBase):
+    access_key: str
+
+
+@app.post("/api/auth/login")
+async def auth_login(req: LoginRequest) -> dict[str, Any]:
+    result = auth.authenticate(req.access_key)
+    if result is None:
+        return {"error": "Invalid access key"}
+    token, user = result
+    return {"token": token, "username": user.username, "role": user.role}
+
+
+@app.post("/api/auth/verify")
+async def auth_verify(authorization: str = Header(default="")) -> dict[str, Any]:
+    if not authorization.strip().startswith("Bearer "):
+        return {"valid": False}
+    token = authorization.strip()[7:]
+    user = auth.verify_token(token.strip())
+    if user is None:
+        return {"valid": False}
+    return {"valid": True, "username": user.username, "role": user.role}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(authorization: str = Header(default="")) -> dict[str, Any]:
+    token = authorization.strip()
+    if token.startswith("Bearer "):
+        auth.logout(token[7:].strip())
+    return {"status": "ok"}
+
+
+# --- Phase 10: Admin Endpoints ---
+
+
+class AddUserRequest(PydanticBase):
+    username: str
+    access_key: str
+    role: str = "user"
+
+
+@app.get("/api/admin/users")
+async def admin_list_users(user: str = Header(default="", alias="X-Auth-Token")) -> dict[str, Any]:
+    u = auth.verify_token(user)
+    if not u or u.role != "admin":
+        return {"error": "Admin access required"}
+    return {"users": auth.list_users()}
+
+
+@app.post("/api/admin/users")
+async def admin_add_user(req: AddUserRequest, user: str = Header(default="", alias="X-Auth-Token")) -> dict[str, Any]:
+    u = auth.verify_token(user)
+    if not u or u.role != "admin":
+        return {"error": "Admin access required"}
+    auth.add_user(req.username, req.access_key, req.role)
+    return {"status": "ok"}
+
+
+@app.delete("/api/admin/users/{username}")
+async def admin_delete_user(username: str, user: str = Header(default="", alias="X-Auth-Token")) -> dict[str, Any]:
+    u = auth.verify_token(user)
+    if not u or u.role != "admin":
+        return {"error": "Admin access required"}
+    auth.delete_user(username)
+    return {"status": "ok"}
 
 
 @app.get("/api/health")

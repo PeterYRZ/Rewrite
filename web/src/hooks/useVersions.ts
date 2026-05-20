@@ -3,35 +3,35 @@ import type { ParagraphVersion } from '../types';
 
 const STORAGE_PREFIX = 'rw-versions';
 
-function storageKey(sessionId: string): string {
-  return `${STORAGE_PREFIX}-${sessionId}`;
+function storageKey(sessionId: string, username: string): string {
+  return `${STORAGE_PREFIX}-${username}-${sessionId}`;
 }
 
-function loadVersions(sessionId: string): ParagraphVersion[] {
+function loadVersions(sessionId: string, username: string): ParagraphVersion[] {
   try {
-    const raw = localStorage.getItem(storageKey(sessionId));
+    const raw = localStorage.getItem(storageKey(sessionId, username));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-function saveVersions(sessionId: string, versions: ParagraphVersion[]) {
-  localStorage.setItem(storageKey(sessionId), JSON.stringify(versions));
+function saveVersions(sessionId: string, username: string, versions: ParagraphVersion[]) {
+  localStorage.setItem(storageKey(sessionId, username), JSON.stringify(versions));
 }
 
-export function useVersions(sessionId: string | null) {
+export function useVersions(sessionId: string | null, username: string) {
   const [versions, setVersions] = useState<ParagraphVersion[]>([]);
 
   const load = useCallback(() => {
     if (!sessionId) return;
-    setVersions(loadVersions(sessionId));
-  }, [sessionId]);
+    setVersions(loadVersions(sessionId, username));
+  }, [sessionId, username]);
 
   const addVersion = useCallback(
     (paraIndex: number, content: string, roundNumber: number) => {
       if (!sessionId) return;
-      const all = loadVersions(sessionId);
+      const all = loadVersions(sessionId, username);
       const version: ParagraphVersion = {
         versionId: `${sessionId}-p${paraIndex}-r${roundNumber}-${Date.now()}`,
         paragraphIndex: paraIndex,
@@ -42,32 +42,32 @@ export function useVersions(sessionId: string | null) {
         label: `Round ${roundNumber}`,
       };
       all.push(version);
-      saveVersions(sessionId, all);
+      saveVersions(sessionId, username, all);
       setVersions(all);
     },
-    [sessionId],
+    [sessionId, username],
   );
 
   const updateLabel = useCallback(
     (versionId: string, label: string) => {
       if (!sessionId) return;
-      const all = loadVersions(sessionId).map((v) =>
+      const all = loadVersions(sessionId, username).map((v) =>
         v.versionId === versionId ? { ...v, label } : v,
       );
-      saveVersions(sessionId, all);
+      saveVersions(sessionId, username, all);
       setVersions(all);
     },
-    [sessionId],
+    [sessionId, username],
   );
 
   const getVersionsForParagraph = useCallback(
     (paraIndex: number): ParagraphVersion[] => {
-      const all = sessionId ? loadVersions(sessionId) : [];
+      const all = sessionId ? loadVersions(sessionId, username) : [];
       return all
         .filter((v) => v.paragraphIndex === paraIndex)
         .sort((a, b) => b.roundNumber - a.roundNumber);
     },
-    [sessionId],
+    [sessionId, username],
   );
 
   return {

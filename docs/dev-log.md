@@ -719,6 +719,42 @@ Rounds: 2（历史完整追踪）
 - TypeScript: 0 errors
 - Vite build: 35 modules → 229KB JS + 23KB CSS
 
+---
+
+## 2026-05-20 — Phase 10 完成：用户认证
+
+### 完成内容
+
+**认证模块** (`src/rewrite_engine/api/auth.py`)
+- `AuthState` 类：内存中管理 users（access_key → User）+ tokens（token → User）
+- `authenticate(access_key)` — 验证 key → 返回 `secrets.token_hex(16)` token
+- `verify_token(token)` / `logout(token)` — token 生命周期管理
+- `list_users()` / `add_user()` / `delete_user()` — 用户 CRUD + 持久化到 `users.json`
+
+**用户存储**
+- `users.json` — 预置 admin (`rw-admin-0000`) + demo (`rw-demo-1111`)
+- `users.json.example` — 模板文件（git 跟踪）
+- `.gitignore` 排除 `users.json`
+
+**API 端点**
+- `POST /api/auth/login` — `{ access_key }` → `{ token, username, role }`
+- `POST /api/auth/verify` — `Authorization: Bearer <token>` → `{ valid, username, role }`
+- `POST /api/auth/logout` — 销毁 token
+- `GET /api/admin/users` — 管理员列出用户
+- `POST /api/admin/users` — 管理员添加用户
+- `DELETE /api/admin/users/{username}` — 管理员删除用户
+
+**前端** 
+- `useAuth.ts` — token (localStorage) + login/logout/verify
+- `AuthGate.tsx` — 全屏居中登录页（Access Key 输入 + 验证）
+- App.tsx 未登录时渲染 AuthGate，登录后 Header 显示用户名 + 角色 tag + 登出按钮
+
+### 构建验证
+
+- TypeScript: 0 errors
+- Vite build: 37 modules → 233KB JS + 24KB CSS
+- Auth API: login → verify → admin list → logout 全部通过
+
 ### 下一步
 
-Phase 10：用户认证（Access Key + 管理员面板）
+Phase 11：DEBUG 模式（进度控制 + 日志面板）

@@ -7,6 +7,7 @@ build/
 
 # 本地配置文件（含敏感信息，从 config.yaml.example 复制）
 config.yaml
+users.json
 
 # Node.js (web/)
 node_modules/

@@ -1,0 +1,14 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "access_key": "rw-admin-xxxx",
+      "role": "admin"
+    },
+    {
+      "username": "demo",
+      "access_key": "rw-demo-xxxx",
+      "role": "user"
+    }
+  ]
+}

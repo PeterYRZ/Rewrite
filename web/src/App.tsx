@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useArticleState } from './hooks/useArticleState';
 import { useRewriteSession } from './hooks/useRewriteSession';
 import { useStreamRewrite } from './hooks/useStreamRewrite';
@@ -15,18 +15,22 @@ import { useHistory } from './hooks/useHistory';
 import type { HistoryEntry } from './hooks/useHistory';
 import { useVersions } from './hooks/useVersions';
 import type { ParagraphVersion } from './types';
+import { useAuth } from './hooks/useAuth';
+import AuthGate from './components/AuthGate';
+import AdminPanel from './components/AdminPanel';
 
 const API_BASE = '/api';
 
 export default function App() {
   const [inputText, setInputText] = useState('');
 
+  const auth = useAuth();
   const article = useArticleState();
-  const session = useRewriteSession();
+  const session = useRewriteSession(auth.token || '');
   const stream = useStreamRewrite();
   const configHook = useConfig();
-  const history = useHistory();
-  const versions = useVersions(session.sessionId);
+  const history = useHistory(auth.user?.username || '');
+  const versions = useVersions(session.sessionId, auth.user?.username || '');
 
   // Guidance text per paragraph
   const [guidanceMap, setGuidanceMap] = useState<Record<number, string>>({});
@@ -37,6 +41,9 @@ export default function App() {
 
   // Version preview state
   const [previewVersion, setPreviewVersion] = useState<ParagraphVersion | null>(null);
+
+  // Admin panel state
+  const [showAdmin, setShowAdmin] = useState(false);
 
   // ---- Load article ----
   const handleLoadArticle = useCallback(async () => {
@@ -245,26 +252,60 @@ export default function App() {
   }, [article, session]);
 
   // ---- Commit round ----
+  const committingRef = useRef(false);
+
   const handleCommit = useCallback(async () => {
-    const data = await session.commitRound();
-    if (data?.paragraphs) {
-      article.replaceParagraphs(data.paragraphs);
-    }
-    article.resetSelection();
-    session.setPhase('done');
+    if (committingRef.current) return;
+    committingRef.current = true;
 
-    // Save to history
-    if (session.sessionState) {
-      history.saveSession(session.sessionState);
-    }
+    try {
+      const data = await session.commitRound();
+      if (!data || data.error) return;
 
-    // Record versions for each rewritten paragraph
-    const currentRoundNum = session.sessionState?.round_count ?? 1;
-    for (const idx of article.confirmedIndices) {
-      const content = article.rewrittenContents[idx];
-      if (content) {
-        versions.addVersion(idx, content, currentRoundNum);
+      if (data.paragraphs) {
+        article.replaceParagraphs(data.paragraphs);
       }
+
+      // Capture before resetSelection clears them
+      const confirmedIdxList = [...article.confirmedIndices];
+      const rewrittenSnap = { ...article.rewrittenContents };
+
+      article.resetSelection();
+      session.setPhase('done');
+
+      // Save to history — build fresh state from commit response,
+      // not the stale session.sessionState from the callback closure
+      if (session.sessionId) {
+        history.saveSession({
+          session_id: session.sessionId,
+          current_article: {
+            paragraphs: data.paragraphs,
+            text: data.text,
+          },
+          rounds: [
+            ...(session.sessionState?.rounds ?? []),
+            {
+              round_num: data.committed_round,
+              target_indices: session.sessionState?.active_round?.target_indices ?? [],
+              results: data.committed_results,
+              committed: true,
+            },
+          ],
+          active_round: null,
+          round_count: data.round_count,
+        });
+      }
+
+      // Record versions for each rewritten paragraph
+      const currentRoundNum = data.round_count;
+      for (const idx of confirmedIdxList) {
+        const content = rewrittenSnap[idx];
+        if (content) {
+          versions.addVersion(idx, content, currentRoundNum);
+        }
+      }
+    } finally {
+      committingRef.current = false;
     }
   }, [session, article, history, versions]);
 
@@ -295,6 +336,17 @@ export default function App() {
   const currentRound = (session.sessionState?.round_count ?? 0) + 1;
   const rounds = session.sessionState?.rounds ?? [];
 
+  // Auth gate
+  if (!auth.isLoggedIn) {
+    return (
+      <AuthGate
+        loading={auth.loading}
+        error={auth.error}
+        onLogin={auth.login}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Header */}
@@ -302,6 +354,28 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h1 className="text-lg font-bold text-slate-800">全文段落改写</h1>
+            {auth.user && (
+              <span className="text-xs text-slate-400">
+                {auth.user.username}
+                {auth.user.role === 'admin' && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs">admin</span>
+                )}
+              </span>
+            )}
+            {auth.user?.role === 'admin' && (
+              <button
+                onClick={() => setShowAdmin(true)}
+                className="text-xs text-amber-600 hover:text-amber-800 cursor-pointer font-medium"
+              >
+                管理用户
+              </button>
+            )}
+            <button
+              onClick={auth.logout}
+              className="text-xs text-slate-400 hover:text-red-500 cursor-pointer"
+            >
+              登出
+            </button>
             {!isIdle && (
               <RoundIndicator currentRound={currentRound} rounds={rounds} />
             )}
@@ -529,6 +603,14 @@ export default function App() {
             />
           </div>
         </div>
+      )}
+
+      {/* Admin panel */}
+      {showAdmin && auth.token && (
+        <AdminPanel
+          token={auth.token}
+          onClose={() => setShowAdmin(false)}
+        />
       )}
 
       {/* Model config drawer */}

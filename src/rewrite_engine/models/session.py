@@ -21,6 +21,7 @@ class RewriteRound(BaseModel):
 
 class RewriteSession(BaseModel):
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    owner: str = ""  # username of the session owner
     original_article: Article
     current_article: Article
     rounds: list[RewriteRound] = Field(default_factory=list)
@@ -28,8 +29,9 @@ class RewriteSession(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     @classmethod
-    def create(cls, article: Article) -> RewriteSession:
+    def create(cls, article: Article, owner: str = "") -> RewriteSession:
         return cls(
+            owner=owner,
             original_article=article,
             current_article=article.clone(),
         )

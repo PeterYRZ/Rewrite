@@ -3,7 +3,11 @@ import type { SessionState, RewritePhase, ValidationReport, SemanticReport } fro
 
 const API_BASE = '/api';
 
-export function useRewriteSession() {
+function authHeaders(token: string): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function useRewriteSession(token: string) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [phase, setPhase] = useState<RewritePhase>('idle');
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
@@ -19,13 +23,14 @@ export function useRewriteSession() {
     try {
       const res = await fetch(`${API_BASE}/rewrite/session/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
         body: JSON.stringify({ article_text: articleText }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       setSessionId(data.session_id);
       setSessionState({
         session_id: data.session_id,
@@ -40,7 +45,7 @@ export function useRewriteSession() {
       setError(e instanceof Error ? e.message : 'Failed to create session');
       return null;
     }
-  }, []);
+  }, [token]);
 
   const startRound = useCallback(async (targetIndices: number[]) => {
     if (!sessionId) return null;
@@ -51,7 +56,7 @@ export function useRewriteSession() {
         `${API_BASE}/rewrite/session/${sessionId}/start-round`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
           body: JSON.stringify({ target_indices: targetIndices }),
         },
       );
@@ -59,6 +64,7 @@ export function useRewriteSession() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       setSessionState((prev) =>
         prev
           ? {
@@ -80,7 +86,7 @@ export function useRewriteSession() {
       setError(e instanceof Error ? e.message : 'Failed to start round');
       return null;
     }
-  }, [sessionId]);
+  }, [sessionId, token]);
 
   const recordResult = useCallback(
     async (paragraphIndex: number, content: string) => {
@@ -90,7 +96,7 @@ export function useRewriteSession() {
       try {
         await fetch(`${API_BASE}/rewrite/session/${sessionId}/record`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
           body: JSON.stringify({ paragraph_index: paragraphIndex, content }),
         });
 
@@ -108,7 +114,7 @@ export function useRewriteSession() {
         setError(e instanceof Error ? e.message : 'Failed to record result');
       }
     },
-    [sessionId],
+    [sessionId, token],
   );
 
   const commitRound = useCallback(async () => {
@@ -118,12 +124,13 @@ export function useRewriteSession() {
     try {
       const res = await fetch(
         `${API_BASE}/rewrite/session/${sessionId}/commit`,
-        { method: 'POST' },
+        { method: 'POST', headers: { ...authHeaders(token) } },
       );
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       setSessionState((prev) =>
         prev
           ? {
@@ -153,12 +160,14 @@ export function useRewriteSession() {
       setError(e instanceof Error ? e.message : 'Failed to commit round');
       return null;
     }
-  }, [sessionId]);
+  }, [sessionId, token]);
 
   const fetchSessionStatus = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`${API_BASE}/rewrite/session/${sessionId}`);
+      const res = await fetch(`${API_BASE}/rewrite/session/${sessionId}`, {
+        headers: { ...authHeaders(token) },
+      });
       if (res.ok) {
         const data: SessionState = await res.json();
         setSessionState(data);
@@ -166,7 +175,7 @@ export function useRewriteSession() {
     } catch {
       // silent
     }
-  }, [sessionId]);
+  }, [sessionId, token]);
 
   // ---- Legacy: auto mode ----
 
@@ -177,7 +186,7 @@ export function useRewriteSession() {
       try {
         const res = await fetch(`${API_BASE}/rewrite/auto`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
           body: JSON.stringify({ article_text: articleText, target_indices: targetIndices }),
         });
 
@@ -195,7 +204,7 @@ export function useRewriteSession() {
         return null;
       }
     },
-    [],
+    [token],
   );
 
   const reset = useCallback(() => {
