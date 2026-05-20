@@ -1,259 +1,357 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { useArticleState } from './hooks/useArticleState';
 import { useRewriteSession } from './hooks/useRewriteSession';
-import ArticleView from './components/ArticleView';
-import CandidatePicker from './components/CandidatePicker';
-import ModeSelector from './components/ModeSelector';
-import type { ValidationReport, SemanticReport } from './types';
+import { useStreamRewrite } from './hooks/useStreamRewrite';
+import { useConfig } from './hooks/useConfig';
+import DiffLayout from './components/DiffLayout';
+import ArticlePanel from './components/ArticlePanel';
+import RewritePanel from './components/RewritePanel';
+import RoundIndicator from './components/RoundIndicator';
+import ConfigPanel from './components/ConfigPanel';
 
 export default function App() {
   const [inputText, setInputText] = useState('');
+
+  const article = useArticleState();
   const session = useRewriteSession();
+  const stream = useStreamRewrite();
+  const configHook = useConfig();
 
-  const handleLoadArticle = () => {
+  // Guidance text per paragraph
+  const [guidanceMap, setGuidanceMap] = useState<Record<number, string>>({});
+
+  // ---- Load article ----
+  const handleLoadArticle = useCallback(async () => {
     if (!inputText.trim()) return;
-    session.loadArticle(inputText);
-  };
+    article.loadArticle(inputText);
+    await session.createSession(inputText);
+  }, [inputText, article, session]);
 
-  const handleRunAuto = () => {
-    session.runAuto();
-  };
+  // ---- Batch rewrite ----
+  const handleRewriteSelected = useCallback(async () => {
+    if (article.targetIndices.length === 0) return;
 
-  const handleStartInteractive = () => {
-    session.startInteractive();
-  };
+    session.setPhase('streaming');
 
-  const isRunning = session.phase === 'rewriting' || session.phase === 'generating_candidates';
+    // Also start a round on the backend
+    await session.startRound(article.targetIndices);
+
+    for (const idx of article.targetIndices) {
+      article.setCardState(idx, 'streaming');
+      article.setRewrittenContent(idx, '');
+    }
+
+    await stream.streamRewrite(
+      article.articleText,
+      article.targetIndices,
+      {
+        onToken(paraIndex, token) {
+          article.appendToken(paraIndex, token);
+        },
+        onParagraphDone(paraIndex, _content) {
+          article.setCardState(paraIndex, 'stream_done');
+        },
+        onParagraphError(paraIndex, error) {
+          article.setRewrittenContent(paraIndex, `[错误] ${error}`);
+          article.setCardState(paraIndex, 'stream_done');
+        },
+        onAllDone() {
+          session.setPhase('reviewing');
+        },
+      },
+    );
+  }, [article, session, stream]);
+
+  // ---- Per-paragraph actions ----
+  const handleAccept = useCallback(
+    (paraIndex: number) => {
+      article.markConfirmed(paraIndex);
+      session.recordResult(paraIndex, article.rewrittenContents[paraIndex] || '');
+    },
+    [article, session],
+  );
+
+  const handleRegenerate = useCallback(
+    async (paraIndex: number) => {
+      const guidance = guidanceMap[paraIndex] || '';
+      article.setCardState(paraIndex, 'regenerating');
+      article.setRewrittenContent(paraIndex, '');
+
+      const confirmedContents: Record<string, string> = {};
+      for (const idx of article.confirmedIndices) {
+        if (idx !== paraIndex) {
+          confirmedContents[String(idx)] = article.rewrittenContents[idx] || '';
+        }
+      }
+
+      await stream.streamRegenerate(
+        article.articleText,
+        paraIndex,
+        article.targetIndices,
+        confirmedContents,
+        guidance,
+        {
+          onToken(_pIdx, token) {
+            article.appendToken(paraIndex, token);
+          },
+          onParagraphDone(_pIdx, _content) {
+            article.setCardState(paraIndex, 'stream_done');
+          },
+          onParagraphError(_pIdx, error) {
+            article.setRewrittenContent(paraIndex, `[错误] ${error}`);
+            article.setCardState(paraIndex, 'stream_done');
+          },
+          onAllDone() {},
+        },
+      );
+
+      setGuidanceMap((prev) => {
+        const next = { ...prev };
+        delete next[paraIndex];
+        return next;
+      });
+    },
+    [article, session, stream, guidanceMap],
+  );
+
+  const handleStartGuidance = useCallback(
+    (paraIndex: number) => {
+      article.setCardState(paraIndex, 'guidance_input');
+    },
+    [article],
+  );
+
+  const handleStartEdit = useCallback(
+    (paraIndex: number) => {
+      article.setCardState(paraIndex, 'editing');
+    },
+    [article],
+  );
+
+  const handleConfirmEdit = useCallback(
+    (paraIndex: number, content: string) => {
+      article.setRewrittenContent(paraIndex, content);
+      article.setCardState(paraIndex, 'stream_done');
+    },
+    [article],
+  );
+
+  // ---- Commit round ----
+  const handleCommit = useCallback(async () => {
+    const data = await session.commitRound();
+    if (data?.paragraphs) {
+      article.replaceParagraphs(data.paragraphs);
+    }
+    article.resetSelection();
+    session.setPhase('done');
+  }, [session, article]);
+
+  // ---- Start next round ----
+  const handleNextRound = useCallback(() => {
+    article.resetSelection();
+    session.setPhase('ready');
+  }, [article, session]);
+
+  // ---- Reset everything ----
+  const handleReset = useCallback(() => {
+    article.resetSelection();
+    session.reset();
+    setInputText('');
+    setGuidanceMap({});
+  }, [article, session]);
+
+  // ---- Derived state ----
+  const isIdle = session.phase === 'idle';
+  const canRewrite = session.phase === 'ready' && article.targetIndices.length > 0;
+  const isStreaming = session.phase === 'streaming';
+  const isReviewing = session.phase === 'reviewing';
+  const isDone = session.phase === 'done';
+  const allConfirmed =
+    article.targetIndices.length > 0 &&
+    article.targetIndices.every((i) => article.confirmedIndices.includes(i));
+
+  const currentRound = (session.sessionState?.round_count ?? 0) + 1;
+  const rounds = session.sessionState?.rounds ?? [];
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-slate-800">全文段落改写</h1>
-          <ModeSelector
-            mode={session.mode}
-            onChange={session.setMode}
-            disabled={isRunning}
-          />
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-lg font-bold text-slate-800">全文段落改写</h1>
+            {!isIdle && (
+              <RoundIndicator currentRound={currentRound} rounds={rounds} />
+            )}
+          </div>
+          {configHook.config && (
+            <ConfigPanel
+              config={configHook.config}
+              activeModel={configHook.activeModel}
+              loading={configHook.loading}
+              onModelChange={(m) => configHook.updateConfig({ model: m })}
+              onTemperatureChange={(t) => configHook.updateConfig({ temperature: t })}
+            />
+          )}
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        {session.phase === 'idle' && (
-          <InputSection
-            text={inputText}
-            onChange={setInputText}
-            onLoad={handleLoadArticle}
-          />
-        )}
-
-        {session.error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-            {session.error}
+      {/* Main */}
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6">
+        {isIdle && (
+          <div className="max-w-2xl mx-auto bg-white rounded-xl border border-slate-200 p-6 space-y-4 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-700">输入文章</h2>
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="在此粘贴文章，段落之间用空行分隔..."
+              className="w-full h-48 p-4 border border-slate-200 rounded-lg text-sm resize-y focus:ring-2 focus:ring-slate-400 outline-none"
+            />
+            <button
+              onClick={handleLoadArticle}
+              disabled={!inputText.trim()}
+              className="px-6 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
+            >
+              加载文章
+            </button>
+            {configHook.error && (
+              <p className="text-sm text-red-500">配置加载失败: {configHook.error}</p>
+            )}
           </div>
         )}
 
-        {(session.phase === 'ready' || session.phase === 'done') && (
-          <>
-            {session.phase === 'ready' && (
-              <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg text-sm">
-                点击段落卡片选择要改写的段落（蓝色标记）
-              </div>
-            )}
-
-            <section>
-              <h2 className="text-lg font-semibold text-slate-700 mb-3">
-                {session.phase === 'done' ? '改写结果' : '文章段落'}
-              </h2>
-              <ArticleView
-                paragraphs={session.paragraphs}
-                targetIndices={session.targetIndices}
-                confirmedIndices={session.confirmedIndices}
-                currentParagraphIndex={session.currentParagraphIndex}
-                rewrittenContents={
-                  session.phase === 'done' ? session.rewrittenContents : {}
+        {!isIdle && (
+          <DiffLayout
+            left={
+              <ArticlePanel
+                title={
+                  isDone
+                    ? `当前稿 — 第 ${rounds.length} 轮完成`
+                    : '当前稿（点击段落选择改写目标）'
                 }
-                onParagraphClick={session.phase === 'ready' ? session.toggleTarget : undefined}
-              />
-            </section>
-
-            {session.phase === 'ready' && (
-              <div className="flex gap-3 items-center">
-                <span className="text-sm text-slate-500">
-                  已选:{' '}
-                  {session.targetIndices.length > 0
-                    ? session.targetIndices.map((i) => `段落${i + 1}`).join(', ')
-                    : '无'}
-                </span>
-                <button
-                  onClick={session.mode === 'auto' ? handleRunAuto : handleStartInteractive}
-                  disabled={isRunning || session.targetIndices.length === 0}
-                  className="px-6 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
-                >
-                  {session.mode === 'auto' ? '开始全自动改写' : '开始交互式改写'}
-                </button>
-              </div>
-            )}
-
-            {session.phase === 'done' && (
-              <>
-                <ValidationSection validation={session.validation} />
-                <SemanticSection reports={session.semanticReports} />
-                <ResultSection text={session.resultText} />
-
-                <button
-                  onClick={() => {
-                    session.resetState();
-                    session.setArticleText('');
-                  }}
-                  className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  重新开始
-                </button>
-              </>
-            )}
-          </>
-        )}
-
-        {session.phase === 'waiting_selection' && session.currentParagraphIndex !== null && (
-          <CandidatePicker
-            candidates={session.candidates}
-            paragraphIndex={session.currentParagraphIndex}
-            onSelect={session.selectCandidate}
-            onRegenerate={session.regenerateCandidates}
-            onSkip={session.skipParagraph}
-            loading={false}
+                paragraphs={article.paragraphs}
+                targetIndices={
+                  isStreaming || isReviewing || isDone ? [] : article.targetIndices
+                }
+                confirmedIndices={isDone ? [] : article.confirmedIndices}
+                rewrittenContents={isDone ? article.rewrittenContents : {}}
+                selectable={!isStreaming && !isReviewing && !isDone}
+                onParagraphClick={
+                  !isStreaming && !isReviewing && !isDone
+                    ? article.toggleTarget
+                    : () => {}
+                }
+              >
+                {session.error && (
+                  <p className="text-sm text-red-500 mt-2">{session.error}</p>
+                )}
+                {isDone && rounds.length > 0 && (
+                  <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <p className="text-sm font-medium text-emerald-700">
+                      第 {rounds.length} 轮已完成
+                    </p>
+                    <p className="text-xs text-emerald-600 mt-1">
+                      已改写段落：{rounds.flatMap((r) =>
+                        Object.keys(r.results).map((k) => `段落${Number(k) + 1}`),
+                      ).join(', ')}
+                    </p>
+                  </div>
+                )}
+              </ArticlePanel>
+            }
+            right={
+              isStreaming || isReviewing ? (
+                <RewritePanel
+                  title={`改写结果 — Round ${currentRound}`}
+                  paragraphs={article.paragraphs}
+                  targetIndices={article.targetIndices}
+                  streamedContents={article.rewrittenContents}
+                  cardStates={article.cardStates}
+                  guidanceMap={guidanceMap}
+                  onGuidanceChange={(idx, text) =>
+                    setGuidanceMap((prev) => ({ ...prev, [idx]: text }))
+                  }
+                  onAccept={handleAccept}
+                  onRegenerate={handleRegenerate}
+                  onStartGuidance={handleStartGuidance}
+                  onStartEdit={handleStartEdit}
+                  onConfirmEdit={handleConfirmEdit}
+                />
+              ) : isDone ? (
+                <div className="space-y-3">
+                  <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                    最终结果
+                  </h2>
+                  <div className="bg-white rounded-lg border border-emerald-200 p-4">
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                      {article.paragraphs.map((p) => p.content).join('\n\n')}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-300 text-sm">
+                  选择左侧段落，点击下方按钮开始改写
+                </div>
+              )
+            }
           />
-        )}
-
-        {session.phase === 'generating_candidates' && (
-          <div className="bg-white rounded-xl border-2 border-amber-300 p-8 text-center shadow-lg">
-            <div className="animate-spin h-8 w-8 border-3 border-amber-400 border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-slate-500">
-              正在为段落 {(session.currentParagraphIndex ?? 0) + 1} 生成改写候选...
-            </p>
-          </div>
-        )}
-
-        {session.phase === 'rewriting' && (
-          <div className="bg-white rounded-xl border-2 border-blue-300 p-8 text-center shadow-lg">
-            <div className="animate-spin h-8 w-8 border-3 border-blue-400 border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-slate-500">正在改写指定段落...</p>
-          </div>
         )}
       </main>
-    </div>
-  );
-}
 
-function InputSection({
-  text,
-  onChange,
-  onLoad,
-}: {
-  text: string;
-  onChange: (t: string) => void;
-  onLoad: () => void;
-}) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-700">输入文章</h2>
-      <textarea
-        value={text}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="在此粘贴文章，段落之间用空行分隔..."
-        className="w-full h-48 p-4 border border-slate-200 rounded-lg text-sm resize-y focus:ring-2 focus:ring-slate-400 focus:border-transparent outline-none"
-      />
-      <button
-        onClick={onLoad}
-        disabled={!text.trim()}
-        className="px-6 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
-      >
-        加载文章
-      </button>
-    </div>
-  );
-}
+      {/* Bottom action bar */}
+      {!isIdle && (
+        <footer className="bg-white border-t border-slate-200 sticky bottom-0 z-10">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {canRewrite && (
+                <button
+                  onClick={handleRewriteSelected}
+                  className="px-5 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 cursor-pointer"
+                >
+                  重写选中段落 ({article.targetIndices.length})
+                </button>
+              )}
+              {isStreaming && (
+                <span className="text-sm text-amber-600 font-medium">
+                  正在改写...
+                </span>
+              )}
+              {isReviewing && allConfirmed && (
+                <button
+                  onClick={handleCommit}
+                  className="px-5 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 cursor-pointer"
+                >
+                  提交本轮 → 继续下一轮
+                </button>
+              )}
+              {isDone && (
+                <>
+                  <button
+                    onClick={handleNextRound}
+                    className="px-5 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 cursor-pointer"
+                  >
+                    开始下一轮
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  >
+                    重新开始
+                  </button>
+                </>
+              )}
+            </div>
 
-function ValidationSection({ validation }: { validation: ValidationReport | null }) {
-  if (!validation) return null;
-
-  const stars = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-      <h3 className="text-lg font-semibold text-slate-700 mb-3">质量评估</h3>
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <ScoreRow label="逻辑连贯性" score={validation.coherence} stars={stars(validation.coherence)} />
-        <ScoreRow label="段落衔接" score={validation.transition} stars={stars(validation.transition)} />
-        <ScoreRow label="语义一致性" score={validation.consistency} stars={stars(validation.consistency)} />
-        <ScoreRow label="风格统一性" score={validation.style} stars={stars(validation.style)} />
-      </div>
-      <div className="mt-3 text-sm text-slate-600">
-        综合均分:{' '}
-        <span className="font-bold text-slate-800">
-          {(typeof validation.average_score === 'number'
-            ? validation.average_score
-            : (validation.coherence + validation.transition + validation.consistency + validation.style) / 4
-          ).toFixed(1)}/5
-        </span>
-      </div>
-      {validation.issues && validation.issues.length > 0 && (
-        <ul className="mt-2 text-sm text-amber-700 list-disc list-inside">
-          {validation.issues.map((issue, i) => (
-            <li key={i}>{issue}</li>
-          ))}
-        </ul>
-      )}
-      {validation.overall && (
-        <p className="mt-2 text-sm text-slate-500">{validation.overall}</p>
-      )}
-    </div>
-  );
-}
-
-function ScoreRow({ label, score, stars }: { label: string; score: number; stars: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-medium text-amber-600">
-        {stars} <span className="text-slate-400 ml-1">{score}/5</span>
-      </span>
-    </div>
-  );
-}
-
-function SemanticSection({ reports }: { reports: SemanticReport[] }) {
-  if (!reports || reports.length === 0) return null;
-
-  const stars = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-      <h3 className="text-lg font-semibold text-slate-700 mb-3">语义相似度分析</h3>
-      <div className="space-y-2">
-        {reports.map((r) => (
-          <div key={r.paragraph_index} className="text-sm">
-            <span className="font-medium text-slate-700">段落 {r.paragraph_index + 1}</span>
-            <span className="text-amber-600 ml-2">
-              {stars(r.similarity)} {r.similarity}/5
-            </span>
-            <p className="text-slate-500 mt-0.5">{r.summary}</p>
+            <div className="text-xs text-slate-400">
+              {article.targetIndices.length > 0 && (
+                <span>
+                  已选: {article.targetIndices.map((i) => i + 1).join(', ')}
+                </span>
+              )}
+            </div>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ResultSection({ text }: { text: string }) {
-  if (!text) return null;
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-      <h3 className="text-lg font-semibold text-slate-700 mb-3">修改后的全文</h3>
-      <div className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
-        {text}
-      </div>
+        </footer>
+      )}
     </div>
   );
 }

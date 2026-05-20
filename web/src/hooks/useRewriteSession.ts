@@ -1,270 +1,228 @@
 import { useState, useCallback } from 'react';
-import type {
-  Paragraph,
-  StepResult,
-  ValidationReport,
-  SemanticReport,
-  Mode,
-  RewritePhase,
-} from '../types';
+import type { SessionState, RewritePhase, ValidationReport, SemanticReport } from '../types';
 
 const API_BASE = '/api';
 
 export function useRewriteSession() {
-  const [mode, setMode] = useState<Mode>('auto');
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [phase, setPhase] = useState<RewritePhase>('idle');
-  const [articleText, setArticleText] = useState('');
-  const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
-  const [targetIndices, setTargetIndices] = useState<number[]>([]);
-  const [confirmedIndices, setConfirmedIndices] = useState<number[]>([]);
-  const [currentParagraphIndex, setCurrentParagraphIndex] = useState<number | null>(null);
-  const [candidates, setCandidates] = useState<string[]>([]);
-  const [rewrittenContents, setRewrittenContents] = useState<Record<number, string>>({});
-  const [history, setHistory] = useState<StepResult[]>([]);
+  const [sessionState, setSessionState] = useState<SessionState | null>(null);
+  const [error, setError] = useState('');
   const [validation, setValidation] = useState<ValidationReport | null>(null);
   const [semanticReports, setSemanticReports] = useState<SemanticReport[]>([]);
   const [resultText, setResultText] = useState('');
-  const [error, setError] = useState('');
 
-  const parseArticle = useCallback((text: string) => {
-    const parts = text.split('\n\n').filter((p) => p.trim());
-    setParagraphs(parts.map((content, i) => ({
-      index: i,
-      content: content.trim(),
-      status: 'original' as const,
-    })));
+  // ---- Session lifecycle ----
+
+  const createSession = useCallback(async (articleText: string) => {
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/rewrite/session/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ article_text: articleText }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      setSessionId(data.session_id);
+      setSessionState({
+        session_id: data.session_id,
+        current_article: { paragraphs: data.paragraphs, text: articleText },
+        rounds: [],
+        active_round: null,
+        round_count: 0,
+      });
+      setPhase('ready');
+      return data.session_id;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to create session');
+      return null;
+    }
   }, []);
 
-  const loadArticle = useCallback((text: string) => {
-    setArticleText(text);
-    parseArticle(text);
-    setPhase('ready');
-    resetState();
-  }, [parseArticle]);
+  const startRound = useCallback(async (targetIndices: number[]) => {
+    if (!sessionId) return null;
+    setError('');
 
-  const toggleTarget = useCallback((index: number) => {
-    setTargetIndices((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index].sort((a, b) => a - b)
-    );
-  }, []);
+    try {
+      const res = await fetch(
+        `${API_BASE}/rewrite/session/${sessionId}/start-round`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_indices: targetIndices }),
+        },
+      );
 
-  const resetState = useCallback(() => {
-    setConfirmedIndices([]);
-    setCurrentParagraphIndex(null);
-    setCandidates([]);
-    setRewrittenContents({});
-    setHistory([]);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      setSessionState((prev) =>
+        prev
+          ? {
+              ...prev,
+              current_article: {
+                paragraphs: data.paragraphs,
+                text: prev.current_article.text,
+              },
+              active_round: {
+                round_num: data.round_num,
+                target_indices: data.target_indices,
+                results: {},
+              },
+            }
+          : prev,
+      );
+      return data;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to start round');
+      return null;
+    }
+  }, [sessionId]);
+
+  const recordResult = useCallback(
+    async (paragraphIndex: number, content: string) => {
+      if (!sessionId) return;
+      setError('');
+
+      try {
+        await fetch(`${API_BASE}/rewrite/session/${sessionId}/record`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paragraph_index: paragraphIndex, content }),
+        });
+
+        setSessionState((prev) => {
+          if (!prev || !prev.active_round) return prev;
+          return {
+            ...prev,
+            active_round: {
+              ...prev.active_round,
+              results: { ...prev.active_round.results, [paragraphIndex]: content },
+            },
+          };
+        });
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to record result');
+      }
+    },
+    [sessionId],
+  );
+
+  const commitRound = useCallback(async () => {
+    if (!sessionId) return null;
+    setError('');
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/rewrite/session/${sessionId}/commit`,
+        { method: 'POST' },
+      );
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      setSessionState((prev) =>
+        prev
+          ? {
+              ...prev,
+              current_article: {
+                paragraphs: data.paragraphs,
+                text: data.text,
+              },
+              rounds: [
+                ...prev.rounds,
+                {
+                  round_num: data.committed_round,
+                  target_indices: [],
+                  results: data.committed_results,
+                  committed: true,
+                },
+              ],
+              active_round: null,
+              round_count: data.round_count,
+            }
+          : prev,
+      );
+      setResultText(data.text);
+      setPhase('done');
+      return data;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to commit round');
+      return null;
+    }
+  }, [sessionId]);
+
+  const fetchSessionStatus = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`${API_BASE}/rewrite/session/${sessionId}`);
+      if (res.ok) {
+        const data: SessionState = await res.json();
+        setSessionState(data);
+      }
+    } catch {
+      // silent
+    }
+  }, [sessionId]);
+
+  // ---- Legacy: auto mode ----
+
+  const runAuto = useCallback(
+    async (articleText: string, targetIndices: number[]) => {
+      setError('');
+      setPhase('streaming');
+      try {
+        const res = await fetch(`${API_BASE}/rewrite/auto`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ article_text: articleText, target_indices: targetIndices }),
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        setResultText(data.rewritten?.text || '');
+        setValidation(data.validation);
+        setSemanticReports(data.semantic_reports || []);
+        setPhase('done');
+        return data;
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Auto rewrite failed');
+        setPhase('ready');
+        return null;
+      }
+    },
+    [],
+  );
+
+  const reset = useCallback(() => {
+    setSessionId(null);
+    setPhase('idle');
+    setSessionState(null);
+    setError('');
     setValidation(null);
     setSemanticReports([]);
     setResultText('');
-    setError('');
   }, []);
-
-  // Mode 1: Auto rewrite
-  const runAuto = useCallback(async () => {
-    if (targetIndices.length === 0) {
-      setError('请至少选择一个目标段落');
-      return;
-    }
-
-    setPhase('rewriting');
-    setError('');
-
-    try {
-      const res = await fetch(`${API_BASE}/rewrite/auto`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ article_text: articleText, target_indices: targetIndices }),
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      setHistory(data.history || []);
-      setValidation(data.validation);
-      setSemanticReports(data.semantic_reports || []);
-
-      if (data.rewritten && data.rewritten.paragraphs) {
-        setResultText(data.rewritten.paragraphs.map((p: Paragraph) => p.content).join('\n\n'));
-        const contents: Record<number, string> = {};
-        for (const step of data.history || []) {
-          contents[step.paragraph_index] = step.rewritten;
-        }
-        setRewrittenContents(contents);
-      }
-
-      setPhase('done');
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Unknown error');
-      setPhase('ready');
-    }
-  }, [articleText, targetIndices]);
-
-  // Mode 2: Interactive
-  const startInteractive = useCallback(async () => {
-    if (targetIndices.length === 0) {
-      setError('请至少选择一个目标段落');
-      return;
-    }
-
-    setPhase('generating_candidates');
-    setError('');
-    resetState();
-
-    try {
-      const res = await fetch(`${API_BASE}/rewrite/interactive/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ article_text: articleText, target_indices: targetIndices }),
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      const sessionId = data.session_id;
-
-      // Load first paragraph's candidates
-      const idx = data.next_paragraph_index;
-      setCurrentParagraphIndex(idx);
-      await fetchCandidates(sessionId, idx);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Unknown error');
-      setPhase('ready');
-    }
-  }, [articleText, targetIndices]);
-
-  const fetchCandidates = useCallback(async (sessionId: string, paragraphIndex: number) => {
-    setPhase('generating_candidates');
-
-    try {
-      const res = await fetch(
-        `${API_BASE}/rewrite/interactive/${sessionId}/candidates`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paragraph_index: paragraphIndex }),
-        },
-      );
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      setCandidates(data.candidates);
-      setPhase('waiting_selection');
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Unknown error');
-      setPhase('ready');
-    }
-  }, []);
-
-  const selectCandidate = useCallback(async (candidateIndex: number) => {
-    if (currentParagraphIndex === null) return;
-
-    setPhase('generating_candidates');
-    const chosen = candidates[candidateIndex];
-    setRewrittenContents((prev) => ({ ...prev, [currentParagraphIndex]: chosen }));
-    setConfirmedIndices((prev) => [...prev, currentParagraphIndex]);
-
-    try {
-      const sessionId = localStorage.getItem('rewrite_session_id') || '';
-      const res = await fetch(
-        `${API_BASE}/rewrite/interactive/${sessionId}/select`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            paragraph_index: currentParagraphIndex,
-            candidate_index: candidateIndex,
-          }),
-        },
-      );
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-
-      if (data.done) {
-        setPhase('done');
-        setResultText(data.article_text);
-        setCurrentParagraphIndex(null);
-      } else {
-        const nextIdx = data.next_paragraph_index;
-        setCurrentParagraphIndex(nextIdx);
-        setCandidates([]);
-        await fetchCandidates(sessionId, nextIdx);
-      }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Unknown error');
-      setPhase('ready');
-    }
-  }, [currentParagraphIndex, candidates]);
-
-  const regenerateCandidates = useCallback(async () => {
-    if (currentParagraphIndex === null) return;
-
-    try {
-      const sessionId = localStorage.getItem('rewrite_session_id') || '';
-      const res = await fetch(
-        `${API_BASE}/rewrite/interactive/${sessionId}/candidates?regenerate=true`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paragraph_index: currentParagraphIndex }),
-        },
-      );
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      setCandidates(data.candidates);
-      setPhase('waiting_selection');
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Unknown error');
-    }
-  }, [currentParagraphIndex]);
-
-  const skipParagraph = useCallback(() => {
-    if (currentParagraphIndex === null) return;
-    const originalContent = paragraphs[currentParagraphIndex]?.content || '';
-    setRewrittenContents((prev) => ({ ...prev, [currentParagraphIndex]: originalContent }));
-    setConfirmedIndices((prev) => [...prev, currentParagraphIndex]);
-
-    // Move to next
-    const remaining = targetIndices.filter(
-      (i) => ![...confirmedIndices, currentParagraphIndex!].includes(i)
-    );
-    if (remaining.length > 0) {
-      setCurrentParagraphIndex(remaining[0]);
-      setCandidates([]);
-      setPhase('generating_candidates');
-    } else {
-      setPhase('done');
-      setCurrentParagraphIndex(null);
-    }
-  }, [currentParagraphIndex, targetIndices, confirmedIndices, paragraphs]);
 
   return {
-    mode, setMode,
+    sessionId,
     phase,
-    articleText, setArticleText,
-    paragraphs, setParagraphs,
-    targetIndices, toggleTarget,
-    confirmedIndices,
-    currentParagraphIndex,
-    candidates,
-    rewrittenContents,
-    history,
+    setPhase,
+    sessionState,
+    error,
     validation,
     semanticReports,
     resultText,
-    error,
-    loadArticle,
-    parseArticle,
+    createSession,
+    startRound,
+    recordResult,
+    commitRound,
+    fetchSessionStatus,
     runAuto,
-    startInteractive,
-    selectCandidate,
-    regenerateCandidates,
-    skipParagraph,
-    resetState,
+    reset,
   };
 }

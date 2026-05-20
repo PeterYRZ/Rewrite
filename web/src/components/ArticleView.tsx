@@ -5,8 +5,8 @@ interface Props {
   paragraphs: Paragraph[];
   targetIndices: number[];
   confirmedIndices: number[];
-  currentParagraphIndex: number | null;
   rewrittenContents: Record<number, string>;
+  selectable?: boolean;
   onParagraphClick?: (index: number) => void;
 }
 
@@ -14,8 +14,8 @@ export default function ArticleView({
   paragraphs,
   targetIndices,
   confirmedIndices,
-  currentParagraphIndex,
   rewrittenContents,
+  selectable = false,
   onParagraphClick,
 }: Props) {
   return (
@@ -25,9 +25,9 @@ export default function ArticleView({
           key={p.index}
           paragraph={p}
           isTarget={targetIndices.includes(p.index)}
-          isCurrent={p.index === currentParagraphIndex}
           isConfirmed={confirmedIndices.includes(p.index)}
           rewrittenContent={rewrittenContents[p.index]}
+          selectable={selectable}
           onClick={onParagraphClick ? () => onParagraphClick(p.index) : undefined}
         />
       ))}

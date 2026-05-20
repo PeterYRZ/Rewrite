@@ -1,3 +1,5 @@
+// ---- Shared types ----
+
 export interface Paragraph {
   index: number;
   content: string;
@@ -42,11 +44,90 @@ export interface AutoRewriteResult {
 
 export type Mode = 'auto' | 'interactive';
 
+// ---- Phase 7: SSE Streaming types ----
+
+/** SSE event from the stream/rewrite endpoint */
+export interface SSETokenEvent {
+  paragraph_index: number;
+  token: string;
+}
+
+export interface SSEParagraphDoneEvent {
+  paragraph_index: number;
+  content: string;
+}
+
+export interface SSEParagraphErrorEvent {
+  paragraph_index: number;
+  error: string;
+}
+
+/** Per-paragraph rewrite card state */
+export type RewriteCardState =
+  | 'pending'
+  | 'streaming'
+  | 'stream_done'
+  | 'accepted'
+  | 'editing'
+  | 'guidance_input'
+  | 'regenerating';
+
+/** Overall rewrite phase for the new interactive mode */
 export type RewritePhase =
   | 'idle'
-  | 'loading_article'
   | 'ready'
-  | 'rewriting'
-  | 'generating_candidates'
-  | 'waiting_selection'
+  | 'streaming'
+  | 'reviewing'
   | 'done';
+
+// ---- Phase 7: Session types ----
+
+export interface RewriteRound {
+  round_num: number;
+  target_indices: number[];
+  results: Record<number, string>;
+  committed: boolean;
+}
+
+export interface SessionState {
+  session_id: string;
+  current_article: {
+    paragraphs: Paragraph[];
+    text: string;
+  };
+  rounds: RewriteRound[];
+  active_round: {
+    round_num: number;
+    target_indices: number[];
+    results: Record<number, string>;
+  } | null;
+  round_count: number;
+}
+
+// ---- Phase 7: Config types ----
+
+export interface ModelInfo {
+  name: string;
+  provider: string;
+  model: string;
+}
+
+export interface AppConfigResponse {
+  models: ModelInfo[];
+  rewrite: {
+    temperature: number;
+    max_tokens: number;
+    candidates_count: number;
+  };
+  validation: {
+    enabled: boolean;
+    strictness: string;
+  };
+}
+
+export interface ConfigUpdatePayload {
+  model?: string;
+  temperature?: number;
+  candidates_count?: number;
+  max_tokens?: number;
+}

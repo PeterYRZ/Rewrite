@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import AsyncIterator
+
 from rewrite_engine.llm.provider import LLMProvider, Message
 from rewrite_engine.models.article import ParagraphStatus, ProjectState
 
@@ -93,6 +95,71 @@ async def generate_candidates(
     )
     candidates = [c.strip() for c in response.split("---CANDIDATE---") if c.strip()]
     return candidates[:count]
+
+
+# ---- Streaming rewrite (Phase 7) ----
+
+
+async def rewrite_stream(
+    provider: LLMProvider,
+    state: ProjectState,
+    *,
+    temperature: float = 0.7,
+    max_tokens: int = 2000,
+) -> AsyncIterator[str]:
+    """Stream-rewrite the current TO_REWRITE paragraph, yielding each token."""
+    messages = build_rewrite_messages(state)
+    async for token in provider.chat_stream(
+        messages, temperature=temperature, max_tokens=max_tokens
+    ):
+        yield token
+
+
+GUIDANCE_SYSTEM_PROMPT = """\
+你是一个专业写作助手。你的任务是根据用户的具体指导，改写文章中指定的目标段落。
+
+要求：
+1. 仅改写 [TO_REWRITE] 标记的目标段落，不改动其他段落
+2. 严格遵循用户给出的改写指导（如语气、风格、侧重点等）
+3. 保持改写后的段落与前后段落的自然衔接和逻辑连贯
+4. 保留原文的核心信息和主旨
+5. 直接输出改写后的完整段落内容，不要添加解释或标记"""
+
+
+def build_guidance_messages(
+    state: ProjectState, guidance: str
+) -> list[Message]:
+    context = state.build_context()
+    para_num = (state.current_paragraph_index or 0) + 1
+
+    user_message = (
+        "以下是需要处理的文章。\n\n"
+        f"{context}\n\n"
+        f"请根据以下指导改写 [TO_REWRITE] 标记的段落（段落{para_num}）：\n"
+        f"指导：{guidance}\n\n"
+        "直接输出改写后的段落内容。"
+    )
+
+    return [
+        {"role": "system", "content": GUIDANCE_SYSTEM_PROMPT},
+        {"role": "user", "content": user_message},
+    ]
+
+
+async def rewrite_with_guidance_stream(
+    provider: LLMProvider,
+    state: ProjectState,
+    guidance: str,
+    *,
+    temperature: float = 0.7,
+    max_tokens: int = 2000,
+) -> AsyncIterator[str]:
+    """Stream-rewrite a paragraph with user guidance, yielding each token."""
+    messages = build_guidance_messages(state, guidance)
+    async for token in provider.chat_stream(
+        messages, temperature=temperature, max_tokens=max_tokens
+    ):
+        yield token
 
 
 # ---- Phase 1 single-paragraph helpers (kept for backward compatibility) ----

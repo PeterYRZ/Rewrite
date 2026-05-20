@@ -321,3 +321,312 @@ cd web && npm run dev
 2. CLI 交互式：`rewrite article.txt --paragraphs 2 4 --mode interactive`
 3. Web UI：`http://localhost:5173`（含段落编辑器 + 候选选择界面）
 4. 批量评估：`rewrite-eval data/test-cases`
+
+---
+
+## 2026-05-19 — Phase 7 规划：交互式模式重设计
+
+### 背景
+
+当前交互式模式是顺序式的（逐段生成候选 → 选择 → 下一段），用户期望的是：
+- 双栏并排 Diff 视图（类似 VS Code Git Diff）
+- 选中多个段落后批量并行流式生成
+- 逐段审查时可接受、指导重写、手动编辑
+- 支持多轮增量改写
+- 前端可配置模型参数
+
+### 技术方案要点
+
+**双栏 Diff 布局**
+- 左侧：可点击选中的文章面板（当前稿），右侧：流式生成的改写结果
+- 段落级 diff 对照，非内联字符级 diff
+
+**并行 SSE 流式输出**
+- 所有目标段落通过 `asyncio.gather` 并行流式生成
+- 每个段落独立 SSE event stream（`paragraph_index` 路由）
+- 前端 fetch + ReadableStream 消费，逐 token 渲染到对应 RewriteCard
+
+**指导式重写**
+- 每段右侧卡片内嵌 GuidanceInput 组件（可展开/折叠）
+- 用户输入自然语言指令 → 单段重新流式生成
+
+**多轮增量**
+- 每轮提交后右侧合入左侧（成为新的当前稿）
+- 可重新选择段落开始新一轮
+- Session 模型记录所有轮次历史
+
+**前端配置面板**
+- 模型选择、temperature 滑块、candidates 数等直接在 UI 调整
+- GET/PUT /api/config 端点在运行时读写配置
+
+### 实施步骤
+
+| 步骤 | 内容 | 关键文件 |
+|------|------|----------|
+| Step 1 | 后端 SSE 流式端点 | `api/server.py`, `agents/generator.py` |
+| Step 2 | 后端会话 & 配置端点 | `api/server.py`, `models/session.py` |
+| Step 3 | 前端 Hook 重构 | `hooks/useStreamRewrite.ts`, `hooks/useConfig.ts`, `hooks/useArticleState.ts` |
+| Step 4 | 前端双栏布局 + 流式渲染 | `DiffLayout.tsx`, `ArticlePanel.tsx`, `RewritePanel.tsx`, `RewriteCard.tsx` |
+| Step 5 | 指导重写 + 手动编辑 | `GuidanceInput.tsx`, `RewriteCard.tsx` 编辑模式 |
+| Step 6 | 多轮支持 + 配置面板 | `RoundIndicator.tsx`, `ConfigPanel.tsx`, session/commit 流程 |
+
+### 待删除的组件
+
+- `CandidatePicker.tsx` → 被 `RewritePanel.tsx` + `RewriteCard.tsx` 替代
+- `ModeSelector.tsx` → 功能融入 Header
+
+---
+
+## 2026-05-19 — Phase 7 Step 1 完成：后端 SSE 流式端点
+
+### 完成内容
+
+**生成Agent 流式函数** (`src/rewrite_engine/agents/generator.py`)
+- `rewrite_stream()` — 逐 token yield 的流式改写
+- `rewrite_with_guidance_stream()` — 接受用户自然语言指导的流式改写
+- `GUIDANCE_SYSTEM_PROMPT` — 指导式重写的专用系统提示词
+- `build_guidance_messages()` — 构建含指导指令的 Prompt
+
+**SSE 端点** (`src/rewrite_engine/api/server.py`)
+- `POST /api/rewrite/stream/rewrite` — 批量并行流式改写
+  - 所有目标段落通过 `asyncio.gather` 并行调用 `chat_stream()`
+  - 使用 `asyncio.Queue` 合并多个并发流的 token
+  - 每个段落独立 event stream（`paragraph_index` 路由）
+  - SSE 事件：`paragraph_start` → `token` → `paragraph_done` → `stream_end`
+- `POST /api/rewrite/stream/regenerate` — 单段指导式流式重写
+  - 接受 `guidance` 字段（自然语言指令）
+  - 支持 `confirmed_contents` 传递已确认段落上下文
+- 辅助函数：`_build_project_state()` 构建含已确认段落的上下文
+- 辅助函数：`_sse_event()` SSE 格式化
+
+### 验证结果
+
+```
+# 单段流式
+curl -N POST /api/rewrite/stream/rewrite -d '{"article_text":"...","target_indices":[1]}'
+→ paragraph_start → token → token → ... → paragraph_done → stream_end
+
+# 并行多段
+curl -N POST /api/rewrite/stream/rewrite -d '{"article_text":"...","target_indices":[1,3]}'
+→ paragraph_start (para 1) → paragraph_start (para 3) → 交错 token → paragraph_done ×2 → stream_end
+
+# 指导式重写
+curl -N POST /api/rewrite/stream/regenerate -d '{...,"guidance":"请用更加学术化的风格"}'
+→ paragraph_start → token → token → ... → paragraph_done → stream_end
+```
+
+所有 SSE 事件按协议格式正确推送，token 实时可见。
+
+---
+
+## 2026-05-19 — Phase 7 Step 2 完成：后端会话 & 配置端点
+
+### 完成内容
+
+**会话模型** (`src/rewrite_engine/models/session.py`)
+- `RewriteSession` — 多轮改写会话
+  - `original_article`（不可变原文）+ `current_article`（累积更新稿）
+  - `rounds` 历史轮次列表 + `active_round` 当前活动轮次
+  - `start_round()` / `record_result()` / `commit_round()` 完整生命周期
+- `RewriteRound` — 单轮改写记录
+  - `round_num`, `target_indices`, `results`（段落→改写内容映射）
+  - `created_at` / `committed_at` 时间戳
+
+**会话 API** (`src/rewrite_engine/api/server.py`)
+- `POST /api/rewrite/session/create` — 创建多轮会话，返回 session_id + 段落列表
+- `POST /api/rewrite/session/{id}/start-round` — 开始新一轮（指定目标段落）
+- `POST /api/rewrite/session/{id}/record` — 记录单段改写结果
+- `POST /api/rewrite/session/{id}/commit` — 提交当前轮次，更新 current_article
+- `GET /api/rewrite/session/{id}` — 查询会话完整状态
+
+**配置 API** (`src/rewrite_engine/api/server.py`)
+- `GET /api/config` — 返回当前配置（模型列表脱敏、rewrite 参数、validation 设置）
+- `PUT /api/config` — 实时更新配置（model/temperature/candidates_count/max_tokens）
+  - 切换模型时自动重建 provider（关闭旧 client → 创建新 provider）
+
+### 验证结果
+
+会话生命周期：
+```
+create → session_id="cdc6e31b"
+start-round → round_num=1, target=[1,2]
+record ×2 → results={1:"B改", 2:"C改"}
+commit → round_count=1, current_article已更新
+status → 完整历史 + 当前稿
+```
+
+配置 CRUD：
+```
+GET /api/config → {models:[{name,provider,model}], rewrite:{temp:0.7,...}}
+PUT /api/config → {temp:0.5, tokens:3000}
+GET /api/config → temp=0.5, tokens=3000  ✓
+```
+
+---
+
+## 2026-05-20 — Phase 7 Step 3 完成：前端 Hook 重构
+
+### 完成内容
+
+**类型定义更新** (`web/src/types.ts`)
+- 新增 SSE 事件类型：`SSETokenEvent`, `SSEParagraphDoneEvent`, `SSEParagraphErrorEvent`
+- 新增 `RewriteCardState` 联合类型（pending/streaming/stream_done/accepted/editing/guidance_input/regenerating）
+- 精简 `RewritePhase` 为 5 个状态（idle/ready/streaming/reviewing/done）
+- 新增 `SessionState`, `RewriteRound`, `AppConfigResponse`, `ConfigUpdatePayload`
+
+**`useArticleState`** (`web/src/hooks/useArticleState.ts`)
+- 段落选择管理：`toggleTarget`, `targetIndices`
+- 改写内容追踪：`rewrittenContents`, `setRewrittenContent`
+- 卡片状态机：`cardStates`, `setCardState`, `markConfirmed`
+- 批量操作：`resetSelection`, `replaceParagraphs`, `allConfirmed`, `remainingTargets`
+
+**`useConfig`** (`web/src/hooks/useConfig.ts`)
+- 启动时自动 fetch 配置
+- `updateConfig()` 局部更新并合并响应
+- `activeModel` / `loading` / `error` 状态
+
+**`useStreamRewrite`** (`web/src/hooks/useStreamRewrite.ts`)
+- `streamRewrite()` — POST `/api/rewrite/stream/rewrite`，fetch + ReadableStream 消费 SSE
+- `streamRegenerate()` — POST `/api/rewrite/stream/regenerate`，同上
+- SSE 事件解析：`paragraph_start` / `token` / `paragraph_done` / `paragraph_error` / `stream_end`
+- 回调模式：`onToken`, `onParagraphDone`, `onAllDone` 等
+- AbortController 支持取消
+
+**`useRewriteSession`** (`web/src/hooks/useRewriteSession.ts`) — 重构聚焦
+- `createSession()` / `startRound()` / `recordResult()` / `commitRound()` — 多轮会话生命周期
+- `fetchSessionStatus()` — 拉取完整会话状态
+- `runAuto()` — 保留 Mode 1 全自动 API 调用
+- `reset()` — 完全重置
+
+### 编译状态
+
+- 4 个新 hook **自身类型正确**，无编译错误
+- 旧 `App.tsx` 与旧组件不兼容（预期行为，Step 4 重建 UI 时解决）
+
+---
+
+## 2026-05-20 — Phase 7 Step 4 完成：前端双栏布局 + 流式渲染
+
+### 完成内容
+
+**新增组件**
+- `DiffLayout.tsx` — CSS Grid 双栏并排容器（50/50，带边框分隔）
+- `ArticlePanel.tsx` — 左侧文章面板（标题 + ArticleView + optional children）
+- `RewritePanel.tsx` — 右侧改写面板（逐段 RewriteCard；非目标段显示灰化摘要）
+- `RewriteCard.tsx` — 核心改写卡片组件：
+  - 流式文本实时累积渲染（token 逐字出现 + 闪烁光标）
+  - 状态机驱动 UI：pending / streaming / stream_done / accepted / editing / guidance_input / regenerating
+  - 操作按钮：接受 / 指导重写 / 手动编辑（按状态显示）
+  - 编辑模式：textarea 替换文本 + 确认/取消
+
+**修改组件**
+- `ParagraphCard.tsx` — 新增 `selectable` prop + ☑/☐ 复选框；移除 `isCurrent` prop
+- `ArticleView.tsx` — 新增 `selectable` prop；移除 `isCurrent` / `currentParagraphIndex`
+
+**删除组件**
+- `CandidatePicker.tsx` — 被 RewritePanel + RewriteCard 替代
+- `ModeSelector.tsx` — 功能融入 Header 模型选择器
+
+**App.tsx 重构** — 完整新布局：
+- Header：标题 + 模型选择下拉 + temperature 输入
+- Main：DiffLayout（左侧 ArticlePanel + 右侧 RewritePanel）
+- Footer：操作栏（重写选中段落 / 提交本轮 / 重新开始）+ 状态指示
+- 5 阶段流程：idle → ready → streaming → reviewing → done
+- 模型选择器和 temperature 通过 `useConfig` 实时更新后端
+
+### 构建验证
+
+- TypeScript: 0 errors
+- Vite build: 27 modules → 209KB JS + 17KB CSS
+- HTTP 200 / API proxy / HTML 正常
+
+### 端到端流程验证
+
+```
+1. POST session/create → session_id
+2. POST session/start-round → round 1 on [1,3]
+3. POST stream/rewrite → paragraph_start ×2 → paragraph_done ×2 → stream_end
+```
+
+### Bug 修复：流式输出闪烁 + SSE 异常
+
+**问题 1：前端流式 token 只不断替换前两个字符**
+- 根因：`onToken` 回调内读取 `article.rewrittenContents[paraIndex]` 是 React 闭包捕获的旧值，永远为 `""`
+- 修复：`useArticleState` 新增 `appendToken()`，使用 `setRewrittenContents(prev => ...)` 函数式更新避免闭包陷阱
+- 修改文件：`hooks/useArticleState.ts` (+appendToken), `App.tsx` (两处 onToken 改用 appendToken)
+
+**问题 2：SSE 流式完成后报 `list index out of range`**
+- 根因：`chat_stream` 中 `chunk.choices[0].delta` 在 API 返回空 choices 列表时越界（chatanywhere 代理在某些 chunk 中不包含 choices）
+- 修复：`openai_provider.py` 和 `ollama_provider.py` 的 `chat_stream` 增加 `if not chunk.choices: continue` 保护
+- 修改文件：`llm/openai_provider.py`, `llm/ollama_provider.py`
+
+**验证**：
+- TypeScript 0 errors + Vite build 成功
+- 6 段文章并行流式改写：`paragraph_start ×2 → paragraph_done ×2 → stream_end`（无 error）
+
+---
+
+## 2026-05-20 — Phase 7 Step 6 完成：多轮支持 + 配置面板 + Bug 修复
+
+### 完成内容
+
+**RoundIndicator 组件** (`web/src/components/RoundIndicator.tsx`)
+- 圆点指示器：已提交轮次（绿色）+ 当前轮次（深色）
+- Tooltip 显示每轮改写的段落详情
+- 无历史时仅显示当前轮次编号
+
+**ConfigPanel 组件** (`web/src/components/ConfigPanel.tsx`)
+- 模型下拉选择器（切换时自动调用 PUT /api/config）
+- Temperature 数字输入框
+- 加载态 disable
+
+**多轮 UX 改进** (`web/src/App.tsx`)
+- `handleNextRound()` — 完成后直接进入下一轮，无需重置
+- done 阶段新增 "开始下一轮" 按钮（保留 "重新开始"）
+- 左侧面板显示已完成轮次的段落列表
+- `handleRewriteSelected` 自动调用 `session.startRound()`
+- Header 集成 RoundIndicator（轮次可视化）
+
+**Bug 修复**（见上节）
+
+### 构建验证
+
+- TypeScript: 0 errors
+- Vite build: 29 modules → 212KB JS + 18KB CSS
+
+### 多轮端到端验证
+
+```
+Round 1: create → start-round [1] → stream ✓ → record → commit ✓
+Round 2: start-round [0,3] → stream ✓ → record ×2 → commit ✓
+Final: 段落A改写版 | 段落B改写版 | 段落C（未改动） | 段落D改写版
+Rounds: 2（历史完整追踪）
+```
+
+### Bug 修复：指导重写 / 手动编辑按钮无反应
+
+- **根因**：`RewriteCard` 的按钮点击后未触发 `cardState` 转换
+  - "指导重写" 按钮只更新了 guidance 文本，未切换到 `guidance_input` 态
+  - "手动编辑" 按钮调用了 `handleEdit`，但该函数将状态设回 `stream_done` 而非 `editing`
+- **修复**：
+  - RewriteCard 新增 `onStartGuidance` / `onStartEdit` / `onConfirmEdit` props
+  - App.tsx 新增三个对应 handler，正确切换 cardState
+  - RewritePanel 透传新回调
+- **验证**：TS 0 errors, Vite build 成功
+
+### Phase 7 总结
+
+全部 6 个 Step 完成：
+
+| Step | 内容 | 状态 |
+|------|------|------|
+| Step 1 | 后端 SSE 流式端点 | ✅ |
+| Step 2 | 后端会话 & 配置端点 | ✅ |
+| Step 3 | 前端 Hook 重构 | ✅ |
+| Step 4 | 前端双栏布局 + 流式渲染 | ✅ |
+| Step 5 | 指导重写 + 手动编辑 | ✅ |
+| Step 6 | 多轮支持 + 配置面板 | ✅ |
+
+**新增接口**：2 SSE + 5 REST + 2 Config = 9 个端点
+**新增前端**：8 组件 + 4 hook
+**删除组件**：CandidatePicker, ModeSelector

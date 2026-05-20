@@ -3,62 +3,62 @@ import { type Paragraph } from '../types';
 interface Props {
   paragraph: Paragraph;
   isTarget: boolean;
-  isCurrent: boolean;
   isConfirmed: boolean;
   rewrittenContent?: string;
+  selectable?: boolean;
   onClick?: () => void;
 }
 
 export default function ParagraphCard({
   paragraph,
   isTarget,
-  isCurrent,
   isConfirmed,
   rewrittenContent,
+  selectable = false,
   onClick,
 }: Props) {
   const content = rewrittenContent ?? paragraph.content;
 
-  const borderColor = isCurrent
-    ? 'border-amber-400 ring-2 ring-amber-200'
-    : isConfirmed
-      ? 'border-emerald-300'
-      : isTarget
-        ? 'border-blue-300'
-        : 'border-slate-200';
+  const borderColor = isConfirmed
+    ? 'border-emerald-300'
+    : isTarget
+      ? 'border-blue-400 ring-1 ring-blue-200'
+      : 'border-slate-200';
 
-  const bgColor = isCurrent
-    ? 'bg-amber-50'
-    : isConfirmed
-      ? 'bg-emerald-50'
-      : isTarget
-        ? 'bg-blue-50'
-        : 'bg-white';
-
-  const badge = isCurrent
-    ? { text: '待改写', cls: 'bg-amber-100 text-amber-700' }
-    : isConfirmed
-      ? { text: '已确认', cls: 'bg-emerald-100 text-emerald-700' }
-      : isTarget
-        ? { text: '目标段落', cls: 'bg-blue-100 text-blue-700' }
-        : null;
+  const bgColor = isConfirmed
+    ? 'bg-emerald-50'
+    : isTarget
+      ? 'bg-blue-50'
+      : 'bg-white';
 
   return (
     <div
       className={`rounded-lg border-2 p-4 transition-all ${borderColor} ${bgColor} ${
-        onClick ? 'cursor-pointer hover:shadow-md' : ''
+        selectable ? 'cursor-pointer hover:shadow-md' : ''
       }`}
-      onClick={onClick}
+      onClick={selectable ? onClick : undefined}
     >
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-medium text-slate-400">
           段落 {paragraph.index + 1}
         </span>
-        {badge && (
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
-            {badge.text}
-          </span>
-        )}
+        <span className="flex items-center gap-2">
+          {isConfirmed && (
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-700">
+              已确认
+            </span>
+          )}
+          {isTarget && !isConfirmed && (
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">
+              已选
+            </span>
+          )}
+          {selectable && (
+            <span className={`text-lg ${isTarget ? 'text-blue-600' : 'text-slate-300'}`}>
+              {isTarget ? '☑' : '☐'}
+            </span>
+          )}
+        </span>
       </div>
       <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
         {content}
