@@ -1,5 +1,8 @@
 # 全文段落改写 / Paragraph Rewriter
 
+[![Release](https://img.shields.io/github/v/release/PeterYRZ/Rewrite?style=flat-square)](https://github.com/PeterYRZ/Rewrite/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+
 An interactive multi-round paragraph rewriting application. Users submit an article, select specific paragraphs, and the system rewrites only those paragraphs while maintaining logical coherence across the full text. Each round can target different paragraphs, with all results accumulated incrementally.
 
 It features a side-by-side diff view (similar to VS Code Git Diff), supporting batch paragraph selection, parallel streaming generation, per-paragraph review (accept/guided rewrite/manual edit), and multi-round incremental rewriting.
@@ -46,13 +49,25 @@ To change ports, set environment variables before starting:
 SERVER_PORT=9000 FRONTEND_PORT=3000 docker compose up
 ```
 
-### Option B: Single Container (Production)
+### Option B: Pull from GitHub Container Registry
 
 ```bash
-# Build the image
-docker build -t paragraph-rewriter .
+# Pull the pre-built image
+docker pull ghcr.io/peteryrz/rewrite:latest
 
-# Run (default port 8000; change -p mapping to use another port)
+# Run
+docker run -p 8000:8000 \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  -v $(pwd)/users.json:/app/users.json \
+  ghcr.io/peteryrz/rewrite:latest
+```
+
+Available tags: `latest`, `v0.1.0`, `v0.1`, `v0`. See [releases](https://github.com/PeterYRZ/Rewrite/releases).
+
+### Option C: Build Locally
+
+```bash
+docker build -t paragraph-rewriter .
 docker run -p 8000:8000 \
   -v $(pwd)/config.yaml:/app/config.yaml \
   -v $(pwd)/users.json:/app/users.json \
@@ -61,7 +76,7 @@ docker run -p 8000:8000 \
 
 The app will be available at **http://localhost:8000** (or your custom port).
 
-### Option C: Manual Setup
+### Option D: Manual Setup
 
 **Prerequisites**: Python 3.14+, Node.js 22+
 

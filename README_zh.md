@@ -1,5 +1,8 @@
 # 全文段落改写 / Paragraph Rewriter
 
+[![Release](https://img.shields.io/github/v/release/PeterYRZ/Rewrite?style=flat-square)](https://github.com/PeterYRZ/Rewrite/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+
 一个交互式多轮段落改写应用。用户提交文章后指定需要改写的段落，系统在保持全文逻辑连贯性的前提下仅改写目标段落。每轮可选择不同段落，改写结果累积增量更新。
 
 采用双栏并排 Diff 视图（类似 VS Code Git Diff），支持批量段落选择、并行流式生成、逐段审查（接受/指导重写/手动编辑）和多轮增量改写。
@@ -46,13 +49,25 @@ docker compose up
 SERVER_PORT=9000 FRONTEND_PORT=3000 docker compose up
 ```
 
-### 方式二：单容器部署（生产环境）
+### 方式二：从 GitHub Container Registry 拉取
 
 ```bash
-# 构建镜像
-docker build -t paragraph-rewriter .
+# 拉取预构建镜像
+docker pull ghcr.io/peteryrz/rewrite:latest
 
-# 运行（默认端口 8000；修改 -p 映射即可使用其他端口）
+# 运行
+docker run -p 8000:8000 \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  -v $(pwd)/users.json:/app/users.json \
+  ghcr.io/peteryrz/rewrite:latest
+```
+
+可用标签：`latest`、`v0.1.0`、`v0.1`、`v0`。详见 [releases](https://github.com/PeterYRZ/Rewrite/releases)。
+
+### 方式三：本地构建
+
+```bash
+docker build -t paragraph-rewriter .
 docker run -p 8000:8000 \
   -v $(pwd)/config.yaml:/app/config.yaml \
   -v $(pwd)/users.json:/app/users.json \
@@ -61,7 +76,7 @@ docker run -p 8000:8000 \
 
 访问 **http://localhost:8000**（或你的自定义端口）即可使用。
 
-### 方式三：手动部署
+### 方式四：手动部署
 
 **环境要求**：Python 3.14+、Node.js 22+
 
