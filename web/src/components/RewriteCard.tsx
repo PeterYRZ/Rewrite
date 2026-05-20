@@ -8,6 +8,8 @@ interface Props {
   streamedContent: string;
   cardState: RewriteCardState;
   guidance: string;
+  progress?: number;
+  onStop?: () => void;
   onGuidanceChange: (text: string) => void;
   onAccept: () => void;
   onRegenerate: () => void;
@@ -28,6 +30,8 @@ export default function RewriteCard({
   streamedContent,
   cardState,
   guidance,
+  progress,
+  onStop,
   onGuidanceChange,
   onAccept,
   onRegenerate,
@@ -48,6 +52,7 @@ export default function RewriteCard({
   const isAccepted = cardState === 'accepted';
   const isEditing = cardState === 'editing';
   const isGuidance = cardState === 'guidance_input';
+  const hasError = streamedContent.startsWith('[错误]');
 
   return (
     <div
@@ -77,14 +82,36 @@ export default function RewriteCard({
           className="w-full h-32 p-2 border border-slate-300 rounded text-sm resize-y focus:ring-2 focus:ring-blue-400 outline-none"
         />
       ) : (
-        <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap mb-3">
-          {streamedContent || (
-            <span className="text-slate-300 italic">等待生成...</span>
+        <div className="mb-3">
+          <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+            {streamedContent || (
+              <span className="text-slate-300 italic">等待生成...</span>
+            )}
+            {isStreaming && (
+              <span className="inline-block w-2 h-4 bg-amber-400 animate-pulse ml-0.5 align-middle" />
+            )}
+          </p>
+
+          {/* Progress bar */}
+          {isStreaming && progress !== undefined && (
+            <div className="w-full bg-slate-200 rounded-full h-1.5 mt-2">
+              <div
+                className="bg-amber-400 h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(Math.max(progress, 0), 100)}%` }}
+              />
+            </div>
           )}
+
+          {/* Stop button during streaming */}
           {isStreaming && (
-            <span className="inline-block w-2 h-4 bg-amber-400 animate-pulse ml-0.5 align-middle" />
+            <button
+              onClick={onStop}
+              className="mt-2 px-2 py-0.5 text-xs rounded border border-red-300 text-red-500 hover:bg-red-50 cursor-pointer"
+            >
+              停止
+            </button>
           )}
-        </p>
+        </div>
       )}
 
       {/* Guidance input */}
@@ -118,30 +145,50 @@ export default function RewriteCard({
       )}
 
       {/* Action buttons */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {isDone && (
           <>
-            <button
-              onClick={onAccept}
-              className="px-3 py-1 text-xs rounded bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer"
-            >
-              接受
-            </button>
-            <button
-              onClick={onStartGuidance}
-              className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer"
-            >
-              指导重写
-            </button>
-            <button
-              onClick={() => {
-                setEditText(streamedContent);
-                onStartEdit();
-              }}
-              className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer"
-            >
-              手动编辑
-            </button>
+            {hasError ? (
+              <>
+                <span className="text-xs text-red-500 self-center">{streamedContent.slice(0, 30)}...</span>
+                <button
+                  onClick={onRegenerate}
+                  className="px-3 py-1 text-xs rounded bg-amber-500 text-white hover:bg-amber-600 cursor-pointer"
+                >
+                  重试
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={onAccept}
+                  className="px-3 py-1 text-xs rounded bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer"
+                >
+                  接受
+                </button>
+                <button
+                  onClick={onRegenerate}
+                  className="px-3 py-1 text-xs rounded border border-amber-300 text-amber-600 hover:bg-amber-50 cursor-pointer"
+                >
+                  重新生成
+                </button>
+                <button
+                  onClick={onStartGuidance}
+                  className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  指导重写
+                </button>
+                <button
+                  onClick={() => {
+                    setEditText(streamedContent);
+                    onStartEdit();
+                  }}
+                  className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  手动编辑
+                </button>
+              </>
+            )}
           </>
         )}
 

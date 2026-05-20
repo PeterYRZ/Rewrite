@@ -8,6 +8,7 @@ export function useArticleState() {
   const [confirmedIndices, setConfirmedIndices] = useState<number[]>([]);
   const [rewrittenContents, setRewrittenContents] = useState<Record<number, string>>({});
   const [cardStates, setCardStates] = useState<Record<number, RewriteCardState>>({});
+  const [paragraphProgress, setParagraphProgress] = useState<Record<number, number>>({});
 
   const parseArticle = useCallback((text: string) => {
     const parts = text.split('\n\n').filter((p) => p.trim());
@@ -75,12 +76,24 @@ export function useArticleState() {
     [],
   );
 
+  const setProgress = useCallback(
+    (paraIndex: number, pct: number) => {
+      setParagraphProgress((prev) => ({ ...prev, [paraIndex]: pct }));
+    },
+    [],
+  );
+
+  const resetProgress = useCallback(() => {
+    setParagraphProgress({});
+  }, []);
+
   const resetSelection = useCallback(() => {
     setTargetIndices([]);
     setConfirmedIndices([]);
     setRewrittenContents({});
     setCardStates({});
-  }, []);
+    resetProgress();
+  }, [resetProgress]);
 
   const allConfirmed = useCallback(() => {
     return (
@@ -113,5 +126,8 @@ export function useArticleState() {
     replaceParagraphs,
     allConfirmed,
     remainingTargets,
+    paragraphProgress,
+    setProgress,
+    resetProgress,
   };
 }

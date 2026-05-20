@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header
@@ -21,6 +22,7 @@ from rewrite_engine.agents.scheduler import SchedulerAgent
 from rewrite_engine.agents.validator import ValidationReport, validate
 from rewrite_engine.api.auth import User, auth
 from rewrite_engine.llm.provider import LLMProvider, create_provider
+from rewrite_engine.logging import get_logger, setup_logging
 from rewrite_engine.models.article import Article, ProjectState
 from rewrite_engine.models.config import AppConfig, load_config
 from rewrite_engine.models.session import RewriteSession
@@ -34,6 +36,7 @@ _provider: LLMProvider | None = None
 _config: AppConfig | None = None
 _schedulers: dict[str, SchedulerAgent] = {}  # legacy interactive sessions
 _rewrite_sessions: dict[str, RewriteSession] = {}  # Phase 7 multi-round sessions
+_logger = get_logger("server")
 
 
 # --- Request/Response models ---
@@ -130,33 +133,47 @@ async def _stream_single_paragraph(
     try:
         state = _build_project_state(article, target_indices, para_idx, confirmed_contents)
         messages = build_rewrite_messages(state)
+        original_len = len(article.paragraphs[para_idx].content)
 
         await queue.put({"type": "paragraph_start", "paragraph_index": para_idx})
+        _logger.info("para_start idx=%d", para_idx)
 
         accumulated = ""
+        token_count = 0
         async for token in provider.chat_stream(
             messages,
             temperature=config.rewrite.temperature,
             max_tokens=config.rewrite.max_tokens,
         ):
             accumulated += token
+            token_count += 1
             await queue.put({
                 "type": "token",
                 "paragraph_index": para_idx,
                 "token": token,
             })
+            if token_count % 5 == 0:
+                await queue.put({
+                    "type": "paragraph_progress",
+                    "paragraph_index": para_idx,
+                    "tokens_so_far": token_count,
+                    "original_length": original_len,
+                })
 
         await queue.put({
             "type": "paragraph_done",
             "paragraph_index": para_idx,
             "content": accumulated.strip(),
+            "tokens": token_count,
         })
+        _logger.info("para_done idx=%d tokens=%d", para_idx, token_count)
     except Exception as e:
         await queue.put({
             "type": "paragraph_error",
             "paragraph_index": para_idx,
             "error": str(e),
         })
+        _logger.error("para_error idx=%d: %s", para_idx, e)
     finally:
         await queue.put(None)  # Sentinel: this paragraph is done
 
@@ -181,6 +198,8 @@ async def _sse_generator(queue: asyncio.Queue[dict[str, Any] | None], total: int
 async def startup() -> None:
     global _provider, _config
     _config = load_config()
+    setup_logging(debug=_config.debug if hasattr(_config, 'debug') else False)
+    _logger.info("Server starting")
     model_config = _config.default_model
     _provider = await create_provider(model_config)
 
@@ -382,33 +401,47 @@ async def stream_regenerate(req: StreamRegenerateRequest):
                 article, req.target_indices,
                 req.paragraph_index, req.confirmed_contents,
             )
+            original_len = len(article.paragraphs[req.paragraph_index].content)
 
             await queue.put({"type": "paragraph_start", "paragraph_index": req.paragraph_index})
+            _logger.info("regenerate_start idx=%d guidance_len=%d", req.paragraph_index, len(req.guidance))
 
             accumulated = ""
+            token_count = 0
             async for token in rewrite_with_guidance_stream(
                 _provider, state, req.guidance,
                 temperature=_config.rewrite.temperature,
                 max_tokens=_config.rewrite.max_tokens,
             ):
                 accumulated += token
+                token_count += 1
                 await queue.put({
                     "type": "token",
                     "paragraph_index": req.paragraph_index,
                     "token": token,
                 })
+                if token_count % 5 == 0:
+                    await queue.put({
+                        "type": "paragraph_progress",
+                        "paragraph_index": req.paragraph_index,
+                        "tokens_so_far": token_count,
+                        "original_length": original_len,
+                    })
 
             await queue.put({
                 "type": "paragraph_done",
                 "paragraph_index": req.paragraph_index,
                 "content": accumulated.strip(),
+                "tokens": token_count,
             })
+            _logger.info("regenerate_done idx=%d tokens=%d", req.paragraph_index, token_count)
         except Exception as e:
             await queue.put({
                 "type": "paragraph_error",
                 "paragraph_index": req.paragraph_index,
                 "error": str(e),
             })
+            _logger.error("regenerate_error idx=%d: %s", req.paragraph_index, e)
         finally:
             await queue.put(None)
 
@@ -697,6 +730,45 @@ async def admin_delete_user(username: str, user: str = Header(default="", alias=
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# --- Phase 11: Debug Endpoints ---
+
+
+@app.get("/api/debug/logs")
+async def debug_logs(
+    lines: int = 100,
+    authorization: str = Header(default=""),
+) -> dict[str, Any]:
+    username = _get_username(authorization)
+    if not username:
+        return {"error": "Authentication required"}
+
+    log_file = Path("logs/rewrite-engine.log")
+    if not log_file.exists():
+        return {"lines": [], "total_lines": 0}
+
+    text = log_file.read_text(encoding="utf-8")
+    all_lines = text.strip().split("\n")
+    tail = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+    return {"lines": tail, "total_lines": len(all_lines)}
+
+
+@app.get("/api/debug/sessions")
+async def debug_sessions(
+    authorization: str = Header(default=""),
+) -> dict[str, Any]:
+    username = _get_username(authorization)
+    if not username:
+        return {"error": "Authentication required"}
+
+    sessions = [
+        {"session_id": sid, "owner": s.owner, "round_count": len(s.rounds)}
+        for sid, s in _rewrite_sessions.items()
+        if s.owner == username
+    ]
+    return {"sessions": sessions, "count": len(sessions)}
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000) -> None:

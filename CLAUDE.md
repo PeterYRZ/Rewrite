@@ -81,15 +81,37 @@ Rewrite/
 
 ## API 端点
 
+### 改写核心
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/api/rewrite/auto` | POST | Mode 1 全自动改写 |
-| `/api/rewrite/stream/rewrite` | POST | Mode 2 SSE 并行流式改写 |
-| `/api/rewrite/stream/regenerate` | POST | Mode 2 SSE 指导式单段重写 |
+| `/api/rewrite/stream/rewrite` | POST | SSE 并行流式改写 |
+| `/api/rewrite/stream/regenerate` | POST | SSE 指导式单段重写 |
 | `/api/rewrite/session/create` | POST | 创建多轮会话 |
+| `/api/rewrite/session/{id}/start-round` | POST | 开始新一轮 |
+| `/api/rewrite/session/{id}/record` | POST | 记录单段结果 |
 | `/api/rewrite/session/{id}/commit` | POST | 提交当前轮次 |
-| `/api/config` | GET/PUT | 读取/更新运行时配置 |
+| `/api/rewrite/session/{id}` | GET | 查询会话状态 |
+
+### 配置 & 工具
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/config` | GET/PUT | 读取/更新运行时配置（含模型 CRUD） |
 | `/api/health` | GET | 健康检查 |
+
+### 认证 & 管理
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/auth/login` | POST | Access Key 登录 |
+| `/api/auth/verify` | POST | 验证 token |
+| `/api/auth/logout` | POST | 销毁 token |
+| `/api/admin/users` | GET/POST/DELETE | 管理员管理用户 |
+
+### 调试
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/debug/logs` | GET | 获取后端日志 |
+| `/api/debug/sessions` | GET | 列出当前用户的会话 |
 
 ## 开发约定
 
@@ -111,10 +133,10 @@ Rewrite/
 | Phase 5 | 评估脚本 + 测试用例 | ✅ |
 | Phase 6 | React 前端基础版 | ✅ |
 | Phase 7 | 交互式模式重设计（双栏 Diff + 流式 + 多轮） | ✅ |
-| **Phase 8** | 结果导出 + 配置抽屉 + 历史记录（localStorage） | 📋 |
-| **Phase 9** | 版本回溯（段落级版本管理 + 对比） | 📋 |
-| **Phase 10** | 用户认证（Access Key + 管理员面板） | 📋 |
-| **Phase 11** | DEBUG 模式（进度控制 + 日志面板） | 📋 |
+| Phase 8 | 结果导出 + 配置抽屉 + 历史记录（localStorage） | ✅ |
+| Phase 9 | 版本回溯（段落级版本管理 + 对比） | ✅ |
+| Phase 10 | 用户认证（Access Key + 管理员面板） | ✅ |
+| Phase 11 | DEBUG 模式（进度控制 + 日志面板） | ✅ |
 | **Phase 12** | 多语言 i18n（中文 + 英文） | 📋 |
 
 ## Phase 8+ 特性概览
@@ -126,7 +148,19 @@ Rewrite/
 | **历史记录** | localStorage 存储会话，支持断点续改 |
 | **版本回溯** | 每个段落可查看/恢复历史版本（按轮次+时间标记） |
 | **用户认证** | Access Key 纯 Key 认证，管理员可管理用户和查看日志 |
-| **DEBUG 模式** | `?debug=true` 开启，FAB 日志面板 + 段落终止/重试按钮 |
+| **DEBUG 模式** | `?debug=true` 开启，FAB 日志面板 + 段落终止/重试按钮 + 进度条 |
 | **多语言** | react-i18next，中文/英文切换 |
+
+### Phase 12: 多语言 i18n 规划
+
+- **方案**：轻量自定义 i18n context（避免引入 react-i18next 重型依赖）
+- **翻译文件**：`web/src/locales/zh-CN.json`、`en.json`
+- **范围**：所有 UI 文本、按钮、badge、提示、错误消息、空状态
+- **切换**：Header 🌐 按钮，localStorage 持久化语言偏好
+- **实施步骤**：
+  1. 创建 i18n context + TranslationProvider + useTranslation hook
+  2. 编写中英文翻译文件
+  3. 替换所有组件和 hooks 中的硬编码中文字符串
+  4. Header 添加语言切换按钮
 
 详见 `docs/tech-spec.md`

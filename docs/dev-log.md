@@ -758,3 +758,136 @@ Rounds: 2（历史完整追踪）
 ### 下一步
 
 Phase 11：DEBUG 模式（进度控制 + 日志面板）
+
+---
+
+## 2026-05-20 — Phase 8+ 历史 Bug 修复（用户隔离 & 重复条目）
+
+### 修复内容
+
+**Bug 1：用户隔离失效（admin 和 demo 互相看到对方记录）**
+- 根因 1（前端）：`useHistory(username)` 的 `useState` 初始化器仅在首次挂载时执行，切换用户时 `entries` 未重载，导致 demo 看到 admin 的历史
+- 修复：`useHistory` 新增 `useEffect` 监听 `username` 变化，自动 `setEntries(loadEntries(username))`
+- 根因 2（后端）：`_check_session_owner` 在 `session.owner` 为空时放行所有请求
+- 修复：收紧检查逻辑——要求身份验证、拒绝空 owner、`session_create` 强制登录
+- 修改文件：`web/src/hooks/useHistory.ts`, `src/rewrite_engine/api/server.py`
+
+**Bug 2：单次改写产生两条相同历史记录**
+- 根因：`saveSession` 在 React 重渲染前被快速连续调用两次时创建重复条目（同一 `session_id`）
+- 修复：`saveSession` 重写为统一路径——添加前先过滤同名 ID，防止重复
+- 修复：`handleCommit` 使用 `commitRound()` 返回的新 `data` 构建 `SessionState`，而非闭包中过时的 `session.sessionState`
+- 新增 `committingRef` 防止双击重复提交
+- 修改文件：`web/src/hooks/useHistory.ts`, `web/src/App.tsx`
+
+### 构建验证
+
+- TypeScript: 0 errors | Vite build: 成功
+
+---
+
+## 2026-05-20 — Phase 11 完成：DEBUG 模式
+
+### 完成内容
+
+**后端日志基础设施** (`src/rewrite_engine/logging.py`)
+- `setup_logging(debug=False)` — 配置 Python `logging`，`RotatingFileHandler` 写入 `logs/rewrite-engine.log`（10MB × 5 备份）
+- `get_logger(name)` — 子模块 logger 工厂
+- 格式：`时间 | 级别 | 消息`
+- `server.py` `startup` 中调用，在 `_stream_single_paragraph` 和 `_run_single` 中记录 paragraph_start/done/error
+
+**SSE 进度事件**
+- 新增 SSE 事件 `paragraph_progress`（每 5 个 token 推送 `{ paragraph_index, tokens_so_far, original_length }`）
+- `_stream_single_paragraph` 和 `stream_regenerate` 的 `_run_single` 均含进度推送
+
+**后端调试端点**
+- `GET /api/debug/logs?lines=100` — 读取日志文件尾部（需 Bearer 认证）
+- `GET /api/debug/sessions` — 列出当前用户的活跃会话
+
+**前端 useDebug Hook** (`web/src/hooks/useDebug.ts`)
+- URL `?debug=true` 检测（`URLSearchParams`）
+- SSE 事件环形缓冲区（最多 500 条，带毫秒时间戳）
+- `addLogEntry()` / `clearLogs()` / `fetchBackendLogs()`
+
+**DebugPanel 组件** (`web/src/components/DebugPanel.tsx`)
+- FAB 按钮（🐛，右下角固定，仅 debug 模式可见）
+- 左侧滑出面板（沿用 `ModelConfigDrawer` 模式：backdrop + translateX 过渡）
+- 3 个标签页：
+  - **Session**：session_id、phase、round_count、target/confirmed indices
+  - **Events**：带颜色标签的实时事件列表、自动滚屏、清除按钮
+  - **Logs**：服务器日志尾部、手动/自动刷新（流式期间 3s 间隔）
+
+**进度条 & 停止/重试** (`web/src/hooks/useArticleState.ts`, `RewriteCard.tsx`)
+- `paragraphProgress` 状态 + `setProgress()` / `resetProgress()`
+- RewriteCard 新增 props：`progress`（0–99% 琥珀色进度条）、`onStop`（停止按钮）
+- 停止逻辑：`useStreamRewrite` 新增 `stopParagraph()` / `removeStoppedParagraph()`，使用 `stoppedRef: Set<number>` 在 SSE 解析循环中过滤事件
+- 错误卡片显示 "重试" 按钮，非错误卡片显示 "重新生成"
+
+**App.tsx 集成**
+- `handleRegexSelected` 中接入 `addLogEntry`（paragraph_start/progress/done/error/stream_end）
+- `handleRegenerate`：cancel 旧流 + 移除停止标记 + 管理 phase（streaming → reviewing）
+- `handleStopParagraph`：停止单段 + 标记完成
+- `handleCancelStream`：取消全部 SSE + 回到 reviewing
+- 底部栏动态进度："正在改写... (N/M 段完成)" + "取消全部" 按钮
+- 底部栏新增 "返回首页" 按钮（phase === 'ready' 时）
+- `continuedFromIdRef` 追踪历史续改来源，防止创建重复条目
+
+### Bug 修复（Phase 11 期间）
+
+- **停止后重新生成无输出**：`handleRegenerate` 中未清除 `stoppedRef` 导致 SSE 事件被过滤 → 新增 `removeStoppedParagraph()` + `stream.cancel()`
+- **重新生成后底部栏状态卡住**：`onAllDone` 未设置 `session.setPhase('reviewing')` → 新增 phase 管理
+- **历史"继续"从原始文章开始**：`loadArticle(entry.articleText)` 覆盖了恢复后的段落 + 旧代码的 `entry.articleText` 可能是原文 → 改用 `entry.sessionState.current_article.text`（最终文本），跳过轮次重放
+- **历史"继续"后无法返回首页**：仅 `isDone` 状态显示"重新开始"按钮 → 在 `canRewrite`（ready）状态新增"返回首页"按钮
+
+### 构建验证
+
+- TypeScript: 0 errors
+- Vite build: 40 modules → 246KB JS + 27KB CSS
+- Python: logging.py + server.py 语法检查通过
+
+### 下一步
+
+Phase 12：多语言 i18n（中文 + 英文）
+
+---
+
+## 2026-05-20 — Phase 12 规划：多语言 i18n
+
+### 技术方案
+
+- **方案**：轻量自定义 React Context（避免引入 react-i18next 等重型依赖）
+- **翻译文件**：`web/src/locales/zh-CN.json`、`en.json`
+- **范围**：所有 UI 文本、按钮、badge、提示、错误消息、空状态
+- **切换**：Header 🌐 按钮，localStorage 持久化语言偏好
+
+### 实施步骤
+
+| Step | 内容 | 关键文件 |
+|------|------|----------|
+| Step 1 | 创建 i18n context + provider + useTranslation hook | `web/src/i18n/I18nContext.tsx` |
+| Step 2 | 编写中英文翻译文件 | `web/src/locales/zh-CN.json`, `en.json` |
+| Step 3 | 替换所有组件中的硬编码中文字符串 | 所有 components/ + App.tsx + hooks/ |
+| Step 4 | Header 添加语言切换按钮 | `App.tsx` Header |
+
+### 翻译文件结构设计
+
+```json
+{
+  "common": {
+    "accept": "接受",
+    "cancel": "取消",
+    "close": "关闭",
+    "confirm": "确认",
+    "stop": "停止",
+    "retry": "重试",
+    "regenerate": "重新生成",
+    ...
+  },
+  "header": { ... },
+  "article": { ... },
+  "rewrite": { ... },
+  "history": { ... },
+  "config": { ... },
+  "auth": { ... },
+  "debug": { ... }
+}
+```

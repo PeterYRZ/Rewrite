@@ -16,8 +16,10 @@ import type { HistoryEntry } from './hooks/useHistory';
 import { useVersions } from './hooks/useVersions';
 import type { ParagraphVersion } from './types';
 import { useAuth } from './hooks/useAuth';
+import { useDebug } from './hooks/useDebug';
 import AuthGate from './components/AuthGate';
 import AdminPanel from './components/AdminPanel';
+import DebugPanel from './components/DebugPanel';
 
 const API_BASE = '/api';
 
@@ -31,6 +33,7 @@ export default function App() {
   const configHook = useConfig();
   const history = useHistory(auth.user?.username || '');
   const versions = useVersions(session.sessionId, auth.user?.username || '');
+  const debug = useDebug();
 
   // Guidance text per paragraph
   const [guidanceMap, setGuidanceMap] = useState<Record<number, string>>({});
@@ -45,9 +48,14 @@ export default function App() {
   // Admin panel state
   const [showAdmin, setShowAdmin] = useState(false);
 
+  // Track which history entry we're continuing from, so new rounds
+  // get saved back to the same entry instead of creating duplicates
+  const continuedFromIdRef = useRef<string | null>(null);
+
   // ---- Load article ----
   const handleLoadArticle = useCallback(async () => {
     if (!inputText.trim()) return;
+    continuedFromIdRef.current = null; // fresh start
     article.loadArticle(inputText);
     await session.createSession(inputText);
   }, [inputText, article, session]);
@@ -57,6 +65,8 @@ export default function App() {
     if (article.targetIndices.length === 0) return;
 
     session.setPhase('streaming');
+    stream.clearStoppedParagraphs();
+    article.resetProgress();
 
     // Also start a round on the backend
     await session.startRound(article.targetIndices);
@@ -70,22 +80,42 @@ export default function App() {
       article.articleText,
       article.targetIndices,
       {
+        onParagraphStart(idx) {
+          debug.addLogEntry('paragraph_start', { paragraph_index: idx });
+        },
         onToken(paraIndex, token) {
           article.appendToken(paraIndex, token);
         },
-        onParagraphDone(paraIndex, _content) {
+        onParagraphProgress(paraIndex, tokensSoFar, originalLength) {
+          const estimated = Math.max(originalLength * 1.3, 200);
+          const pct = Math.min(Math.round((tokensSoFar / estimated) * 100), 99);
+          article.setProgress(paraIndex, pct);
+          debug.addLogEntry('paragraph_progress', {
+            paragraph_index: paraIndex,
+            tokens_so_far: tokensSoFar,
+          });
+        },
+        onParagraphDone(paraIndex, content) {
           article.setCardState(paraIndex, 'stream_done');
+          article.setProgress(paraIndex, 100);
+          debug.addLogEntry('paragraph_done', {
+            paragraph_index: paraIndex,
+            content_length: content.length,
+          });
         },
         onParagraphError(paraIndex, error) {
           article.setRewrittenContent(paraIndex, `[错误] ${error}`);
           article.setCardState(paraIndex, 'stream_done');
+          debug.addLogEntry('paragraph_error', { paragraph_index: paraIndex, error });
         },
         onAllDone() {
           session.setPhase('reviewing');
+          debug.addLogEntry('stream_end', { total_paragraphs: article.targetIndices.length });
+          debug.fetchBackendLogs(auth.token || undefined);
         },
       },
     );
-  }, [article, session, stream]);
+  }, [article, session, stream, debug, auth.token]);
 
   // ---- Per-paragraph actions ----
   const handleAccept = useCallback(
@@ -109,6 +139,15 @@ export default function App() {
         }
       }
 
+      debug.addLogEntry('regenerate_start', { paragraph_index: paraIndex, guidance: guidance.slice(0, 50) });
+
+      // Cancel any in-flight batch stream so old tokens don't leak into this regenerate
+      stream.cancel();
+      // Clear stopped state so this paragraph can receive SSE events again
+      stream.removeStoppedParagraph(paraIndex);
+
+      session.setPhase('streaming');
+
       await stream.streamRegenerate(
         article.articleText,
         paraIndex,
@@ -116,17 +155,34 @@ export default function App() {
         confirmedContents,
         guidance,
         {
+          onParagraphStart(idx) {
+            debug.addLogEntry('paragraph_start', { paragraph_index: idx });
+          },
           onToken(_pIdx, token) {
             article.appendToken(paraIndex, token);
           },
-          onParagraphDone(_pIdx, _content) {
+          onParagraphProgress(_pIdx, tokensSoFar, originalLength) {
+            const estimated = Math.max(originalLength * 1.3, 200);
+            const pct = Math.min(Math.round((tokensSoFar / estimated) * 100), 99);
+            article.setProgress(paraIndex, pct);
+          },
+          onParagraphDone(_pIdx, content) {
             article.setCardState(paraIndex, 'stream_done');
+            article.setProgress(paraIndex, 100);
+            debug.addLogEntry('paragraph_done', {
+              paragraph_index: paraIndex,
+              content_length: content.length,
+            });
           },
           onParagraphError(_pIdx, error) {
             article.setRewrittenContent(paraIndex, `[错误] ${error}`);
             article.setCardState(paraIndex, 'stream_done');
+            debug.addLogEntry('paragraph_error', { paragraph_index: paraIndex, error });
           },
-          onAllDone() {},
+          onAllDone() {
+            session.setPhase('reviewing');
+            debug.addLogEntry('regenerate_end', { paragraph_index: paraIndex });
+          },
         },
       );
 
@@ -136,7 +192,7 @@ export default function App() {
         return next;
       });
     },
-    [article, session, stream, guidanceMap],
+    [article, session, stream, guidanceMap, debug],
   );
 
   const handleStartGuidance = useCallback(
@@ -167,6 +223,24 @@ export default function App() {
     },
     [article],
   );
+
+  // ---- Debug: stop / cancel ----
+  const handleStopParagraph = useCallback(
+    (paraIndex: number) => {
+      stream.stopParagraph(paraIndex);
+      article.setCardState(paraIndex, 'stream_done');
+      article.setProgress(paraIndex, 100);
+      debug.addLogEntry('user_stop', { paragraph_index: paraIndex });
+    },
+    [stream, article, debug],
+  );
+
+  const handleCancelStream = useCallback(() => {
+    stream.cancel();
+    session.setPhase('reviewing');
+    article.resetProgress();
+    debug.addLogEntry('user_cancel_all', {});
+  }, [stream, session, article, debug]);
 
   // ---- Config drawer actions ----
   const handleAddModel = useCallback(async (form: {
@@ -220,34 +294,24 @@ export default function App() {
   );
 
   // ---- History continue ----
-  const handleHistoryContinue = useCallback((entry: HistoryEntry) => {
-    // Restore article state
-    if (entry.sessionState.current_article) {
-      article.replaceParagraphs(entry.sessionState.current_article.paragraphs);
-    }
-    // Create a new session (or restore the old ID via API)
-    session.reset();
-    // Load the article text into the hook
-    article.loadArticle(entry.articleText);
-    // Create a session with the restored article
-    setTimeout(async () => {
-      await session.createSession(entry.articleText);
-      // Restore rounds
-      for (const r of entry.sessionState.rounds || []) {
-        if (r.committed) {
-          await session.startRound(r.target_indices);
-          for (const [idx, content] of Object.entries(r.results)) {
-            await session.recordResult(Number(idx), content as string);
-          }
-          await session.commitRound();
-          if (session.sessionState?.current_article?.paragraphs) {
-            article.replaceParagraphs(session.sessionState.current_article.paragraphs);
-          }
-        }
-      }
-      session.setPhase('ready');
-      article.resetSelection();
-    }, 100);
+  const handleHistoryContinue = useCallback(async (entry: HistoryEntry) => {
+    // Use the final article text (after all rounds) from the saved state
+    const finalText =
+      entry.sessionState.current_article?.text ||
+      entry.articleText;
+
+    // Track which entry we're continuing — new rounds will be saved
+    // back to this same entry instead of creating duplicates
+    continuedFromIdRef.current = entry.id;
+
+    // Load the final article into the UI
+    article.loadArticle(finalText);
+
+    // Create a new server session with the final article state.
+    await session.createSession(finalText);
+    // Show the final result page (with copy/download) by default
+    session.setPhase('done');
+    article.resetSelection();
     setShowHistory(false);
   }, [article, session]);
 
@@ -273,11 +337,12 @@ export default function App() {
       article.resetSelection();
       session.setPhase('done');
 
-      // Save to history — build fresh state from commit response,
-      // not the stale session.sessionState from the callback closure
-      if (session.sessionId) {
+      // Save to history — use continuedFromId so new rounds are
+      // appended to the original entry instead of creating duplicates
+      const historyId = continuedFromIdRef.current || session.sessionId;
+      if (historyId) {
         history.saveSession({
-          session_id: session.sessionId,
+          session_id: historyId,
           current_article: {
             paragraphs: data.paragraphs,
             text: data.text,
@@ -317,6 +382,7 @@ export default function App() {
 
   // ---- Reset everything ----
   const handleReset = useCallback(() => {
+    continuedFromIdRef.current = null;
     article.resetSelection();
     session.reset();
     setInputText('');
@@ -496,6 +562,8 @@ export default function App() {
                   streamedContents={article.rewrittenContents}
                   cardStates={article.cardStates}
                   guidanceMap={guidanceMap}
+                  paragraphProgress={article.paragraphProgress}
+                  onStop={handleStopParagraph}
                   onGuidanceChange={(idx, text) =>
                     setGuidanceMap((prev) => ({ ...prev, [idx]: text }))
                   }
@@ -541,17 +609,37 @@ export default function App() {
           <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               {canRewrite && (
-                <button
-                  onClick={handleRewriteSelected}
-                  className="px-5 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 cursor-pointer"
-                >
-                  重写选中段落 ({article.targetIndices.length})
-                </button>
+                <>
+                  <button
+                    onClick={handleRewriteSelected}
+                    className="px-5 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 cursor-pointer"
+                  >
+                    重写选中段落 ({article.targetIndices.length})
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 cursor-pointer"
+                  >
+                    返回首页
+                  </button>
+                </>
               )}
               {isStreaming && (
-                <span className="text-sm text-amber-600 font-medium">
-                  正在改写...
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-amber-600 font-medium">
+                    正在改写... ({
+                      Object.values(article.cardStates).filter(
+                        (s) => s === 'stream_done',
+                      ).length
+                    }/{article.targetIndices.length} 段完成)
+                  </span>
+                  <button
+                    onClick={handleCancelStream}
+                    className="px-3 py-1 text-xs border border-red-300 text-red-500 rounded hover:bg-red-50 cursor-pointer"
+                  >
+                    取消全部
+                  </button>
+                </div>
               )}
               {isReviewing && allConfirmed && (
                 <button
@@ -625,6 +713,20 @@ export default function App() {
         onTokenChange={handleTokenChange}
         onAddModel={handleAddModel}
         onDeleteModel={handleDeleteModel}
+      />
+
+      {/* Debug panel (activates with ?debug=true) */}
+      <DebugPanel
+        isDebugMode={debug.isDebugMode}
+        sessionId={session.sessionId}
+        phase={session.phase}
+        targetIndices={article.targetIndices}
+        confirmedIndices={article.confirmedIndices}
+        roundCount={session.sessionState?.round_count ?? 0}
+        sseLog={debug.sseLog}
+        backendLogs={debug.backendLogs}
+        onFetchBackendLogs={() => debug.fetchBackendLogs(auth.token || undefined)}
+        onClearLogs={debug.clearLogs}
       />
     </div>
   );

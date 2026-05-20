@@ -3,6 +3,7 @@ import { useState, useCallback, useRef } from 'react';
 export interface StreamCallbacks {
   onParagraphStart?: (paraIndex: number) => void;
   onToken?: (paraIndex: number, token: string) => void;
+  onParagraphProgress?: (paraIndex: number, tokensSoFar: number, originalLength: number) => void;
   onParagraphDone?: (paraIndex: number, content: string) => void;
   onParagraphError?: (paraIndex: number, error: string) => void;
   onAllDone?: () => void;
@@ -13,11 +14,26 @@ const API_BASE = '/api';
 export function useStreamRewrite() {
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const stoppedRef = useRef<Set<number>>(new Set());
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     setIsStreaming(false);
+  }, []);
+
+  const stopParagraph = useCallback((paraIndex: number) => {
+    stoppedRef.current = new Set([...stoppedRef.current, paraIndex]);
+  }, []);
+
+  const clearStoppedParagraphs = useCallback(() => {
+    stoppedRef.current = new Set();
+  }, []);
+
+  const removeStoppedParagraph = useCallback((paraIndex: number) => {
+    const next = new Set(stoppedRef.current);
+    next.delete(paraIndex);
+    stoppedRef.current = next;
   }, []);
 
   const streamRewrite = useCallback(
@@ -66,16 +82,29 @@ export function useStreamRewrite() {
                 const data = JSON.parse(dataStr);
                 switch (eventType) {
                   case 'paragraph_start':
-                    callbacks.onParagraphStart?.(data.paragraph_index);
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onParagraphStart?.(data.paragraph_index);
+                    }
                     break;
                   case 'token':
-                    callbacks.onToken?.(data.paragraph_index, data.token);
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onToken?.(data.paragraph_index, data.token);
+                    }
+                    break;
+                  case 'paragraph_progress':
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onParagraphProgress?.(data.paragraph_index, data.tokens_so_far, data.original_length);
+                    }
                     break;
                   case 'paragraph_done':
-                    callbacks.onParagraphDone?.(data.paragraph_index, data.content);
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onParagraphDone?.(data.paragraph_index, data.content);
+                    }
                     break;
                   case 'paragraph_error':
-                    callbacks.onParagraphError?.(data.paragraph_index, data.error);
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onParagraphError?.(data.paragraph_index, data.error);
+                    }
                     break;
                   case 'stream_end':
                     callbacks.onAllDone?.();
@@ -153,16 +182,29 @@ export function useStreamRewrite() {
                 const data = JSON.parse(dataStr);
                 switch (eventType) {
                   case 'paragraph_start':
-                    callbacks.onParagraphStart?.(data.paragraph_index);
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onParagraphStart?.(data.paragraph_index);
+                    }
                     break;
                   case 'token':
-                    callbacks.onToken?.(data.paragraph_index, data.token);
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onToken?.(data.paragraph_index, data.token);
+                    }
+                    break;
+                  case 'paragraph_progress':
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onParagraphProgress?.(data.paragraph_index, data.tokens_so_far, data.original_length);
+                    }
                     break;
                   case 'paragraph_done':
-                    callbacks.onParagraphDone?.(data.paragraph_index, data.content);
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onParagraphDone?.(data.paragraph_index, data.content);
+                    }
                     break;
                   case 'paragraph_error':
-                    callbacks.onParagraphError?.(data.paragraph_index, data.error);
+                    if (!stoppedRef.current.has(data.paragraph_index)) {
+                      callbacks.onParagraphError?.(data.paragraph_index, data.error);
+                    }
                     break;
                   case 'stream_end':
                     callbacks.onAllDone?.();
@@ -192,5 +234,8 @@ export function useStreamRewrite() {
     streamRegenerate,
     isStreaming,
     cancel,
+    stopParagraph,
+    clearStoppedParagraphs,
+    removeStoppedParagraph,
   };
 }

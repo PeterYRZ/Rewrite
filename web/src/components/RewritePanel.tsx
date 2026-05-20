@@ -8,6 +8,8 @@ interface Props {
   streamedContents: Record<number, string>;
   cardStates: Record<number, RewriteCardState>;
   guidanceMap: Record<number, string>;
+  paragraphProgress?: Record<number, number>;
+  onStop?: (paraIndex: number) => void;
   onGuidanceChange: (paraIndex: number, text: string) => void;
   onAccept: (paraIndex: number) => void;
   onRegenerate: (paraIndex: number) => void;
@@ -29,6 +31,8 @@ export default function RewritePanel({
   streamedContents,
   cardStates,
   guidanceMap,
+  paragraphProgress,
+  onStop,
   onGuidanceChange,
   onAccept,
   onRegenerate,
@@ -79,6 +83,8 @@ export default function RewritePanel({
             }
             cardState={cardStates[p.index] || 'pending'}
             guidance={guidanceMap[p.index] || ''}
+            progress={paragraphProgress?.[p.index]}
+            onStop={onStop ? () => onStop(p.index) : undefined}
             onGuidanceChange={(text) => onGuidanceChange(p.index, text)}
             onAccept={() => onAccept(p.index)}
             onRegenerate={() => onRegenerate(p.index)}

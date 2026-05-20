@@ -1,0 +1,35 @@
+2026-05-20 21:00:25 | INFO  | Server starting
+2026-05-20 21:01:20 | INFO  | para_start idx=2
+2026-05-20 21:01:36 | INFO  | regenerate_start idx=2 guidance_len=0
+2026-05-20 21:01:49 | INFO  | regenerate_done idx=2 tokens=107
+2026-05-20 21:02:02 | INFO  | para_done idx=2 tokens=112
+2026-05-20 21:02:19 | INFO  | regenerate_start idx=2 guidance_len=0
+2026-05-20 21:03:15 | INFO  | regenerate_done idx=2 tokens=110
+2026-05-20 21:03:32 | INFO  | regenerate_start idx=2 guidance_len=0
+2026-05-20 21:03:46 | INFO  | regenerate_done idx=2 tokens=135
+2026-05-20 21:14:04 | INFO  | Server starting
+2026-05-20 21:14:29 | INFO  | para_start idx=1
+2026-05-20 21:14:34 | INFO  | regenerate_start idx=1 guidance_len=0
+2026-05-20 21:14:45 | INFO  | para_done idx=1 tokens=99
+2026-05-20 21:14:55 | INFO  | regenerate_done idx=1 tokens=101
+2026-05-20 21:15:17 | INFO  | para_start idx=3
+2026-05-20 21:15:26 | INFO  | para_done idx=3 tokens=101
+2026-05-20 21:20:15 | INFO  | Server starting
+2026-05-20 21:20:30 | INFO  | para_start idx=2
+2026-05-20 21:20:50 | INFO  | para_done idx=2 tokens=136
+2026-05-20 21:20:51 | INFO  | regenerate_start idx=2 guidance_len=0
+2026-05-20 21:20:54 | INFO  | regenerate_start idx=2 guidance_len=0
+2026-05-20 21:21:00 | INFO  | regenerate_done idx=2 tokens=107
+2026-05-20 21:21:17 | INFO  | regenerate_done idx=2 tokens=118
+2026-05-20 21:31:30 | INFO  | Server starting
+2026-05-20 21:32:08 | INFO  | para_start idx=1
+2026-05-20 21:32:33 | INFO  | para_done idx=1 tokens=102
+2026-05-20 21:32:58 | INFO  | para_start idx=2
+2026-05-20 21:33:11 | INFO  | para_done idx=2 tokens=130
+2026-05-20 21:33:54 | INFO  | para_start idx=4
+2026-05-20 21:34:28 | INFO  | para_done idx=4 tokens=108
+2026-05-20 21:45:17 | INFO  | Server starting
+2026-05-20 21:45:48 | INFO  | para_start idx=3
+2026-05-20 21:46:04 | INFO  | para_done idx=3 tokens=106
+2026-05-20 21:46:15 | INFO  | para_start idx=0
+2026-05-20 21:46:25 | INFO  | para_done idx=0 tokens=134

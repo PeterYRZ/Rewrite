@@ -62,6 +62,12 @@ export interface SSEParagraphErrorEvent {
   error: string;
 }
 
+export interface SSEParagraphProgressEvent {
+  paragraph_index: number;
+  tokens_so_far: number;
+  original_length: number;
+}
+
 /** Per-paragraph rewrite card state */
 export type RewriteCardState =
   | 'pending'
